@@ -1,0 +1,13 @@
+package com.yesbee.nwtrack.shared;
+
+public final class DomainEnums {
+    private DomainEnums() {}
+    public enum Role { SUPER_ADMIN, ADMIN, OPERATOR, SUPERVISOR, DISPLAY_DEVICE }
+    public enum StyleStatus { DRAFT, RELEASED, IN_PRODUCTION, COMPLETED }
+    public enum LotStatus { DRAFT, READY, DISPATCHED, AT_STATION, IN_STORAGE, IN_PROCESS, READY_FOR_DISPATCH, AT_QC, COMPLETED, CANCELLED }
+    public enum VisitStatus { EXPECTED, DISPATCHED, RECEIVED, ACTIVE, READY_FOR_DISPATCH, COMPLETED }
+    public enum ProcessStatus { PENDING, IN_PROGRESS, PAUSED, BLOCKED, SKIPPED, COMPLETED }
+    public enum PlacementType { TROLLEY, PROCESS_AREA, STORAGE, COMPLETED, CANCELLED }
+    public enum QcOutcome { PASS, PARTIAL_REJECT, REJECT }
+    public enum TransportStatus { REQUESTED, ACCEPTED, DISPATCHED, PICKED_UP, IN_TRANSIT, DELIVERED, REJECTED, FAILED, CANCEL_REQUESTED, CANCELLED }
+}
