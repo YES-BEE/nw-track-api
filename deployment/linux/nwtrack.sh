@@ -9,7 +9,7 @@ CERT_DIR="$ROOT_DIR/deployment/certificates"
 APP_DOMAIN_DEFAULT="nowash-track.com"
 
 require_command() { command -v "$1" >/dev/null 2>&1 || { echo "Required command not found: $1" >&2; exit 1; }; }
-compose() { docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"; }
+compose() { NGINX_TEMPLATE=default.conf.template COMPOSE_PROFILES=https ALLOWED_ORIGINS="https://$(env_value APP_DOMAIN)" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"; }
 env_value() { sed -n "s/^$1=//p" "$ENV_FILE" | tail -n 1; }
 set_env() {
   local key="$1" value="$2" temporary

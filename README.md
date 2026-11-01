@@ -39,9 +39,9 @@ deployment/windows   Windows one-time installation and lifecycle commands
 deployment/linux     Linux one-time installation and lifecycle commands
 ```
 
-Nginx publishes HTTP/HTTPS and CoreDNS publishes local DNS. PostgreSQL remains on an isolated backend network; the API joins the backend and edge networks for database access and future Fleet Manager connectivity. Every factory uses the fixed local URL `https://nowash-track.com`.
+Nginx publishes the API on the local network. Windows defaults to HTTP access by IP address; the optional HTTPS/domain deployment is preserved.
 
-## One-time Windows installation
+## Windows installation
 
 From the repository root run:
 
@@ -49,41 +49,41 @@ From the repository root run:
 deployment\windows\install.cmd start
 ```
 
-The script requests Windows Administrator approval and then automatically:
+Approve the Administrator prompt. The installer detects the active Wi-Fi IPv4 address, allows HTTP port 80 from that Wi-Fi subnet, and starts the deployment. It prints the server IP address. No client certificates or DNS changes are required in this mode. Existing certificates are preserved; local DNS and certificate installation are skipped.
 
-1. Detects the active Wi-Fi adapter and IPv4 subnet.
-2. Changes that Windows network profile to Private.
-3. Creates `.env` and secure secrets when missing.
-4. Generates a factory-internal CA and HTTPS certificate for `nowash-track.com`.
-5. Binds DNS, HTTP and HTTPS only to the detected Wi-Fi address.
-6. Creates Windows Firewall rules limited to that Wi-Fi interface and subnet.
-7. Builds and starts PostgreSQL, the API, Nginx and CoreDNS.
-8. Validates local DNS and calls the HTTPS `/actuator/health` endpoint.
-9. Adds a Windows name-resolution policy for `nowash-track.com` that uses local CoreDNS without replacing the router's IPv4/IPv6 DNS servers; `install.cmd remove` removes the policy.
+Connect your phone to the same Wi-Fi and open these URLs using the printed address:
 
-Windows Internet Connection Sharing/mobile hotspot also uses DNS port 53. If active, the installer backs up and disables connection sharing before stopping that service so NW Track DNS can start; `install.cmd remove` restores the saved sharing configuration and its Manual startup type.
+```text
+http://192.168.1.10/actuator/health
+http://192.168.1.10/swagger-ui.html
+```
 
-Later lifecycle commands do not repeat network installation:
+Replace `192.168.1.10` with the printed server address. The root `/` has no page. HTTP sends credentials and data without encryption. Access remains limited to the local network; changing to another network does not provide remote access. Guest Wi-Fi/client isolation can prevent devices reaching each other. Rerun the installer if the server's Wi-Fi address changes.
+
+Lifecycle commands:
 
 ```bat
 deployment\windows\nwtrack.cmd start
 deployment\windows\nwtrack.cmd status
 deployment\windows\nwtrack.cmd logs
-deployment\windows\nwtrack.cmd certificate
 deployment\windows\nwtrack.cmd stop
 deployment\windows\install.cmd test
 deployment\windows\install.cmd remove
 ```
 
-`remove` deletes only the NW Track Wi-Fi firewall rule and returns binding to `127.0.0.1`. It does not delete PostgreSQL data.
+To enable the preserved HTTPS/domain mode later:
 
-Advanced override when automatic detection is unsuitable:
+```bat
+deployment\windows\install.cmd start -EnableHttps
+```
+
+This enables `https://nowash-track.com`, local CoreDNS, port 443 and certificate generation. Configure the router DHCP DNS server to the printed server IP and trust `deployment/certificates/ca.crt` on each client. The server receives its own domain DNS policy and CA trust automatically. Keep router port forwarding disabled. To return to IP-based HTTP, run `install.cmd start` without the flag. This removes the server domain DNS policy and restores Internet Connection Sharing if previously disabled by the installer.
+
+Advanced address override:
 
 ```bat
 deployment\windows\install.cmd start -BindAddress 192.168.1.10 -AllowedSubnet 192.168.1.0/24
 ```
-
-The installer configures a domain-specific DNS policy automatically on the Windows server itself. To make phones, TVs and other computers resolve the same name, set the router DHCP DNS server to the displayed factory server address; generic scripts cannot safely change arbitrary router models. Keep router port forwarding and UPnP exposure disabled. Install `deployment/certificates/ca.crt` as a trusted root certificate on every client device. Devices that cannot trust a private CA are not compatible with this HTTPS mode.
 
 ## One-time Linux installation
 
@@ -121,10 +121,9 @@ Use the returned JWT as `Authorization: Bearer <token>`.
 
 - Nginx and CoreDNS are the only host-published services. PostgreSQL and the API remain on Compose networks.
 - Replace every generated secret before production and restrict the host firewall to the factory LAN/Wi-Fi subnet.
-- HTTPS is mandatory. The installer creates a separate internal CA at each factory for the shared local hostname; its private key remains on that factory server and its CA certificate must be trusted by clients.
+- In optional HTTPS mode, the installer creates a separate internal CA at each factory for the shared local hostname; its private key remains on that factory server and its CA certificate must be trusted by clients.
 - The simulator implements the same transport-provider interface intended for the Phase 2 AGV/AMR Fleet Manager adapter.
 - Back up the named PostgreSQL volume/database externally to meet the selected five-minute RPO; a single physical server alone cannot provide that RPO after server loss.
 ## API documentation
 
 Swagger UI is enabled for the factory-local deployment at `/swagger-ui.html`. Set `SWAGGER_ENABLED=false` and recreate the API container if a factory security policy requires it to be disabled.
-

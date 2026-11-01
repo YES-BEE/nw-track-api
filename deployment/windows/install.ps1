@@ -2,7 +2,8 @@ param(
     [ValidateSet("start", "configure", "status", "test", "remove")]
     [string]$Action = "start",
     [string]$BindAddress,
-    [string]$AllowedSubnet
+    [string]$AllowedSubnet,
+    [switch]$EnableHttps
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,6 +24,7 @@ function Invoke-Elevated {
     $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-File", ('"' + $PSCommandPath + '"'), "-Action", $Action)
     if ($BindAddress) { $arguments += @("-BindAddress", $BindAddress) }
     if ($AllowedSubnet) { $arguments += @("-AllowedSubnet", $AllowedSubnet) }
+    if ($EnableHttps) { $arguments += "-EnableHttps" }
     $process = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList ($arguments -join ' ')
     exit $process.ExitCode
 }
@@ -145,7 +147,7 @@ function Configure-Network {
     }
     $wifi = Get-WifiNetwork
     $ip = if ($BindAddress) { $BindAddress } else { $wifi.Address.IPAddress }
-    Reserve-DnsPort $ip
+    if ($EnableHttps) { Reserve-DnsPort $ip }
     $subnet = if ($AllowedSubnet) { $AllowedSubnet } else { Get-NetworkCidr $ip $wifi.Address.PrefixLength }
     if ($ip -ne $wifi.Address.IPAddress) { Write-Warning "Configured address $ip differs from detected Wi-Fi address $($wifi.Address.IPAddress)." }
 
@@ -153,26 +155,33 @@ function Configure-Network {
     Set-EnvironmentValue "BIND_ADDRESS" $ip
     Set-EnvironmentValue "ALLOWED_SUBNET" $subnet
     Set-EnvironmentValue "APP_DOMAIN" $domain
+    Set-EnvironmentValue "HTTPS_ENABLED" ($EnableHttps.IsPresent.ToString().ToLowerInvariant())
 
     Get-NetFirewallRule -DisplayName "NW Track - *" -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+    if ($EnableHttps) {
     New-NetFirewallRule -DisplayName "NW Track - HTTPS" -Description "Allow NW Track HTTPS from the factory LAN" `
         -Direction Inbound -Action Allow -Protocol TCP -LocalPort 443 -LocalAddress $ip `
         -RemoteAddress $subnet -InterfaceAlias $wifi.Adapter.Name -Profile Private | Out-Null
-    New-NetFirewallRule -DisplayName "NW Track - HTTP Redirect" -Description "Redirect the NW Track domain to HTTPS" `
+    }
+    New-NetFirewallRule -DisplayName "NW Track - HTTP" -Description "Allow NW Track HTTP from the factory LAN" `
         -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80 -LocalAddress $ip `
         -RemoteAddress $subnet -InterfaceAlias $wifi.Adapter.Name -Profile Private | Out-Null
+    if ($EnableHttps) {
     foreach ($protocol in @("TCP","UDP")) {
         New-NetFirewallRule -DisplayName "NW Track - DNS $protocol" -Description "Resolve $domain on the factory LAN" `
             -Direction Inbound -Action Allow -Protocol $protocol -LocalPort 53 -LocalAddress $ip `
             -RemoteAddress $subnet -InterfaceAlias $wifi.Adapter.Name -Profile Private | Out-Null
     }
 
+    }
     Write-Host "NW Track Wi-Fi access configured." -ForegroundColor Green
     Write-Host "Wi-Fi adapter: $($wifi.Adapter.Name)" -ForegroundColor Cyan
     Write-Host "Laptop address: $ip" -ForegroundColor Cyan
     Write-Host "Allowed subnet: $subnet" -ForegroundColor Cyan
+    if ($EnableHttps) {
     Write-Host "Application URL: https://$domain" -ForegroundColor Cyan
     Write-Host "Configure the Wi-Fi router DHCP DNS address as: $ip" -ForegroundColor Yellow
+    } else { Write-Host "Application URL: http://$ip" -ForegroundColor Cyan }
     Write-Host "No router port forwarding is required or created." -ForegroundColor Yellow
 }
 
@@ -236,6 +245,13 @@ function Show-Status {
 function Test-Deployment {
     $ip=Get-EnvironmentValue "BIND_ADDRESS";$configuredDomain=Get-EnvironmentValue "APP_DOMAIN"
     if (-not $ip) { throw "NW Track network access is not configured. Run deployment\windows\install.cmd configure." }
+    if ((Get-EnvironmentValue "HTTPS_ENABLED") -ne "true") {
+        $url="http://${ip}/actuator/health"
+        $health=& curl.exe --silent --fail --noproxy "*" $url
+        if ($LASTEXITCODE -ne 0 -or $health -notmatch '"status"\s*:\s*"UP"') { throw "NW Track HTTP health check failed." }
+        Write-Host "PASS: $url returned UP" -ForegroundColor Green
+        return
+    }
     $resolved=Resolve-DnsName -Name $configuredDomain -Server $ip -Type A -ErrorAction Stop | Where-Object IPAddress | Select-Object -First 1
     if ($resolved.IPAddress -ne $ip) { throw "Local DNS returned $($resolved.IPAddress), expected $ip." }
     $url="https://${configuredDomain}/actuator/health";$ca=Join-Path $projectDirectory "deployment\certificates\ca.crt"
@@ -249,7 +265,7 @@ if ($Action -in @("start","configure","remove") -and -not (Test-Administrator)) 
 
 switch ($Action) {
     "configure" { Configure-Network }
-    "start" { Configure-Network; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "nwtrack.ps1") start; if ($LASTEXITCODE -ne 0) { throw "NW Track startup failed with exit code $LASTEXITCODE." }; Enable-LocalDns; Install-FactoryCa; Test-Deployment }
+    "start" { Configure-Network; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "nwtrack.ps1") start; if ($LASTEXITCODE -ne 0) { throw "NW Track startup failed with exit code $LASTEXITCODE." }; if ($EnableHttps) { Enable-LocalDns; Install-FactoryCa } else { Restore-ClientDns; if ((Get-EnvironmentValue "ICS_DISABLED_BY_NWTRACK") -eq "true") { Restore-InternetConnectionSharing; Set-EnvironmentValue "ICS_DISABLED_BY_NWTRACK" "false" } }; Test-Deployment }
     "status" { Show-Status }
     "test" { Test-Deployment }
     "remove" {

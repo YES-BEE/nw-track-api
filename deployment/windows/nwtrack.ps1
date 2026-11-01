@@ -131,6 +131,19 @@ function Get-Settings {
     return $settings
 }
 
+function Set-DeploymentMode {
+    $settings = Get-Settings
+    if ($settings.HTTPS_ENABLED -eq "true") {
+        $env:NGINX_TEMPLATE = "default.conf.template"
+        $env:COMPOSE_PROFILES = "https"
+        $env:ALLOWED_ORIGINS = "https://$($settings.APP_DOMAIN)"
+    } else {
+        $env:NGINX_TEMPLATE = "http.conf.template"
+        $env:COMPOSE_PROFILES = ""
+        $env:ALLOWED_ORIGINS = "http://$($settings.BIND_ADDRESS)"
+    }
+}
+
 function Ensure-Certificates {
     $settings = Get-Settings
     $domain = if ($settings.APP_DOMAIN) { $settings.APP_DOMAIN } else { "nowash-track.com" }
@@ -170,11 +183,16 @@ function Wait-ForApi {
     $domain = if ($settings.APP_DOMAIN) { $settings.APP_DOMAIN } else { "nowash-track.com" }
     $healthUrl = "https://${domain}/actuator/health"
     $ca = Join-Path $certificateDirectory "ca.crt"
+    if ($settings.HTTPS_ENABLED -ne "true") { $healthUrl = "http://${bindAddress}/actuator/health" }
     $deadline = (Get-Date).AddMinutes(5)
     Write-Host "Waiting for PostgreSQL, Flyway migrations, and NW Track API..."
     while ((Get-Date) -lt $deadline) {
         try {
-            $response = & curl.exe --silent --fail --ssl-no-revoke --cacert $ca --resolve "${domain}:443:${bindAddress}" $healthUrl
+            if ($settings.HTTPS_ENABLED -eq "true") {
+                $response = & curl.exe --silent --fail --ssl-no-revoke --cacert $ca --resolve "${domain}:443:${bindAddress}" $healthUrl
+            } else {
+                $response = & curl.exe --silent --fail --noproxy "*" $healthUrl
+            }
             if ($LASTEXITCODE -eq 0 -and $response -match '"status"\s*:\s*"UP"') {
                 Write-Host "NW Track is ready." -ForegroundColor Green
                 return
@@ -195,8 +213,9 @@ function Wait-ForApi {
 function Start-NwTrack {
     Assert-Prerequisites
     New-EnvironmentFile
-    Ensure-Certificates
-    & $script:DockerComposeExe --env-file $environmentFile -f $composeFile up -d --build
+    Set-DeploymentMode
+    if ((Get-Settings).HTTPS_ENABLED -eq "true") { Ensure-Certificates }
+    & $script:DockerComposeExe --env-file $environmentFile -f $composeFile up -d --build --remove-orphans
     if ($LASTEXITCODE -ne 0) {
         Write-Warning "Compose detected containers or networks from an older deployment. Cleaning them without deleting database volumes, then retrying once."
         & $script:DockerComposeExe --env-file $environmentFile -f $composeFile down --remove-orphans
@@ -208,7 +227,7 @@ function Start-NwTrack {
     & $script:DockerComposeExe ps
     $settings = Get-Settings
     $domain = if ($settings.APP_DOMAIN) { $settings.APP_DOMAIN } else { "nowash-track.com" }
-    $baseUrl = "https://${domain}"
+    $baseUrl = if ($settings.HTTPS_ENABLED -eq "true") { "https://${domain}" } else { "http://$($settings.BIND_ADDRESS)" }
     Write-Host "Application:  $baseUrl" -ForegroundColor Cyan
     Write-Host "Swagger UI:  $baseUrl/swagger-ui.html" -ForegroundColor Cyan
     Write-Host "Health:      $baseUrl/actuator/health" -ForegroundColor Cyan
@@ -216,6 +235,7 @@ function Start-NwTrack {
 
 Push-Location $projectDirectory
 try {
+    if (Test-Path -LiteralPath $environmentFile) { Set-DeploymentMode }
     switch ($Action) {
         "init" { New-EnvironmentFile }
         "start" { Start-NwTrack }

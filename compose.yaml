@@ -33,7 +33,7 @@ services:
       BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD}
       FACTORY_NAME: ${FACTORY_NAME}
-      ALLOWED_ORIGINS: https://${APP_DOMAIN:-nowash-track.com}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://${BIND_ADDRESS:-127.0.0.1}}
       TRANSPORT_PROVIDER: simulator
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
     expose: ["8080"]
@@ -61,7 +61,7 @@ services:
       - "${BIND_ADDRESS:-127.0.0.1}:80:80"
       - "${BIND_ADDRESS:-127.0.0.1}:443:443"
     volumes:
-      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./nginx/${NGINX_TEMPLATE:-http.conf.template}:/etc/nginx/templates/default.conf.template:ro
       - ./deployment/certificates:/etc/nginx/certs:ro
     environment:
       APP_DOMAIN: ${APP_DOMAIN:-nowash-track.com}
@@ -73,6 +73,7 @@ services:
       options: {max-size: "10m", max-file: "5"}
 
   dns:
+    profiles: [https]
     image: coredns/coredns:1.12.4
     restart: unless-stopped
     command: ["-conf", "/etc/coredns/Corefile"]
