@@ -1,0 +1,10 @@
+. {
+  hosts {
+    {$BIND_ADDRESS} {$APP_DOMAIN}
+    fallthrough
+  }
+  forward . 1.1.1.1 8.8.8.8
+  cache 30
+  errors
+  log
+}

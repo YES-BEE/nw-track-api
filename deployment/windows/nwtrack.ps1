@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("init", "start", "stop", "restart", "status", "logs", "reset")]
+    [ValidateSet("init", "start", "stop", "restart", "status", "logs", "certificate", "reset")]
     [string]$Action = "start",
     [switch]$ConfirmDatabaseDeletion
 )
@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 $projectDirectory = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $environmentFile = Join-Path $projectDirectory ".env"
 $composeFile = Join-Path $projectDirectory "compose.yaml"
+$certificateDirectory = Join-Path $projectDirectory "deployment\certificates"
 $script:DockerComposeExe = $null
 
 function Add-DockerCliToPath {
@@ -82,7 +83,14 @@ function New-RandomHex([int]$ByteCount) {
 }
 
 function New-EnvironmentFile {
-    if (Test-Path -LiteralPath $environmentFile) { return }
+    if (Test-Path -LiteralPath $environmentFile) {
+        $existing = Get-Content -LiteralPath $environmentFile
+        if (-not ($existing -match '^APP_DOMAIN=')) { Add-Content -LiteralPath $environmentFile -Value "APP_DOMAIN=nowash-track.com" -Encoding utf8 }
+        if (-not ($existing -match '^BIND_ADDRESS=')) { Add-Content -LiteralPath $environmentFile -Value "BIND_ADDRESS=127.0.0.1" -Encoding utf8 }
+        if (-not ($existing -match '^ALLOWED_SUBNET=')) { Add-Content -LiteralPath $environmentFile -Value "ALLOWED_SUBNET=127.0.0.1/32" -Encoding utf8 }
+        if (-not ($existing -match '^SWAGGER_ENABLED=')) { Add-Content -LiteralPath $environmentFile -Value "SWAGGER_ENABLED=true" -Encoding utf8 }
+        return
+    }
 
     $jwtBytes = New-Object byte[] 48
     $generator = [Security.Cryptography.RandomNumberGenerator]::Create()
@@ -103,10 +111,10 @@ function New-EnvironmentFile {
         "BOOTSTRAP_ADMIN_USERNAME=admin"
         "BOOTSTRAP_ADMIN_PASSWORD=$adminPassword"
         "FACTORY_NAME=NW Track Factory"
+        "APP_DOMAIN=nowash-track.com"
         "BIND_ADDRESS=127.0.0.1"
         "ALLOWED_SUBNET=127.0.0.1/32"
-        "API_PORT=8080"
-        "SWAGGER_ENABLED=false"
+        "SWAGGER_ENABLED=true"
     ) | Set-Content -LiteralPath $environmentFile -Encoding utf8
 
     Write-Host "Created secure runtime configuration: $environmentFile" -ForegroundColor Green
@@ -115,20 +123,59 @@ function New-EnvironmentFile {
     Write-Host "Store this password securely. It will not be printed during later starts." -ForegroundColor Yellow
 }
 
-function Wait-ForApi {
+function Get-Settings {
     $settings = @{}
     Get-Content -LiteralPath $environmentFile | ForEach-Object {
         if ($_ -match '^([^#=]+)=(.*)$') { $settings[$matches[1].Trim()] = $matches[2].Trim() }
     }
+    return $settings
+}
+
+function Ensure-Certificates {
+    $settings = Get-Settings
+    $domain = if ($settings.APP_DOMAIN) { $settings.APP_DOMAIN } else { "nowash-track.com" }
+    if ($domain -notmatch '^[A-Za-z0-9.-]+$') { throw "APP_DOMAIN contains invalid characters: $domain" }
+    New-Item -ItemType Directory -Path $certificateDirectory -Force | Out-Null
+    $config = @"
+[req]
+distinguished_name=dn
+prompt=no
+[dn]
+CN=$domain
+[v3_server]
+subjectAltName=DNS:$domain
+keyUsage=critical,digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+basicConstraints=critical,CA:FALSE
+"@
+    Set-Content -LiteralPath (Join-Path $certificateDirectory "openssl.cnf") -Value $config -Encoding ascii
+    $required = @("ca.crt","ca.key","server.crt","server.key") | ForEach-Object { Join-Path $certificateDirectory $_ }
+    $mount = "${certificateDirectory}:/certs"
+    if (($required | Where-Object { -not (Test-Path -LiteralPath $_) }).Count -eq 0) {
+        & docker run --rm --entrypoint openssl -v $mount alpine/openssl:3.5.4 x509 -in /certs/server.crt -noout -checkhost $domain *> $null
+        if ($LASTEXITCODE -eq 0) { return }
+        Remove-Item -LiteralPath (Join-Path $certificateDirectory "server.crt") -Force
+        Remove-Item -LiteralPath (Join-Path $certificateDirectory "server.key") -Force
+        Write-Host "The configured hostname changed; regenerating the server certificate while preserving the factory CA." -ForegroundColor Yellow
+    }
+    $command = "set -eu; cd /certs; if [ ! -s ca.key ] || [ ! -s ca.crt ]; then openssl genrsa -out ca.key 4096; openssl req -x509 -new -sha256 -days 3650 -key ca.key -subj '/CN=NW Track Factory Root CA' -out ca.crt; fi; if [ ! -s server.key ] || [ ! -s server.crt ]; then openssl genrsa -out server.key 3072; openssl req -new -key server.key -config openssl.cnf -out server.csr; openssl x509 -req -sha256 -days 825 -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial -extfile openssl.cnf -extensions v3_server -out server.crt; rm -f server.csr ca.srl; fi; chmod 600 ca.key server.key"
+    & docker run --rm --entrypoint sh -v $mount alpine/openssl:3.5.4 -c $command
+    if ($LASTEXITCODE -ne 0) { throw "Could not generate the internal CA and HTTPS certificate." }
+    Write-Host "Generated internal HTTPS certificate for $domain." -ForegroundColor Green
+}
+
+function Wait-ForApi {
+    $settings = Get-Settings
     $bindAddress = if ($settings.BIND_ADDRESS) { $settings.BIND_ADDRESS } else { "127.0.0.1" }
-    $apiPort = if ($settings.API_PORT) { $settings.API_PORT } else { "8080" }
-    $healthUrl = "http://${bindAddress}:${apiPort}/actuator/health"
+    $domain = if ($settings.APP_DOMAIN) { $settings.APP_DOMAIN } else { "nowash-track.com" }
+    $healthUrl = "https://${domain}/actuator/health"
+    $ca = Join-Path $certificateDirectory "ca.crt"
     $deadline = (Get-Date).AddMinutes(5)
     Write-Host "Waiting for PostgreSQL, Flyway migrations, and NW Track API..."
     while ((Get-Date) -lt $deadline) {
         try {
-            $health = Invoke-RestMethod -Uri $healthUrl -TimeoutSec 3
-            if ($health.status -eq "UP") {
+            $response = & curl.exe --silent --fail --ssl-no-revoke --cacert $ca --resolve "${domain}:443:${bindAddress}" $healthUrl
+            if ($LASTEXITCODE -eq 0 -and $response -match '"status"\s*:\s*"UP"') {
                 Write-Host "NW Track is ready." -ForegroundColor Green
                 return
             }
@@ -148,15 +195,20 @@ function Wait-ForApi {
 function Start-NwTrack {
     Assert-Prerequisites
     New-EnvironmentFile
+    Ensure-Certificates
     & $script:DockerComposeExe --env-file $environmentFile -f $composeFile up -d --build
-    if ($LASTEXITCODE -ne 0) { throw "Docker Compose could not start NW Track." }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "Compose detected containers or networks from an older deployment. Cleaning them without deleting database volumes, then retrying once."
+        & $script:DockerComposeExe --env-file $environmentFile -f $composeFile down --remove-orphans
+        if ($LASTEXITCODE -ne 0) { throw "Docker Compose could not reconcile the previous NW Track deployment." }
+        & $script:DockerComposeExe --env-file $environmentFile -f $composeFile up -d --build
+        if ($LASTEXITCODE -ne 0) { throw "Docker Compose could not start NW Track after cleaning the previous deployment." }
+    }
     Wait-ForApi
     & $script:DockerComposeExe ps
-    $settings = @{}
-    Get-Content -LiteralPath $environmentFile | ForEach-Object { if ($_ -match '^([^#=]+)=(.*)$') { $settings[$matches[1].Trim()] = $matches[2].Trim() } }
-    $displayAddress = if ($settings.BIND_ADDRESS) { $settings.BIND_ADDRESS } else { "127.0.0.1" }
-    $displayPort = if ($settings.API_PORT) { $settings.API_PORT } else { "8080" }
-    $baseUrl = "http://${displayAddress}:${displayPort}"
+    $settings = Get-Settings
+    $domain = if ($settings.APP_DOMAIN) { $settings.APP_DOMAIN } else { "nowash-track.com" }
+    $baseUrl = "https://${domain}"
     Write-Host "Application:  $baseUrl" -ForegroundColor Cyan
     Write-Host "Swagger UI:  $baseUrl/swagger-ui.html" -ForegroundColor Cyan
     Write-Host "Health:      $baseUrl/actuator/health" -ForegroundColor Cyan
@@ -183,6 +235,15 @@ try {
         "logs" {
             Assert-Prerequisites
             & $script:DockerComposeExe --env-file $environmentFile -f $composeFile logs --tail 200 -f
+        }
+        "certificate" {
+            Assert-Prerequisites
+            New-EnvironmentFile
+            Remove-Item -LiteralPath (Join-Path $certificateDirectory "server.crt") -Force -ErrorAction SilentlyContinue
+            Remove-Item -LiteralPath (Join-Path $certificateDirectory "server.key") -Force -ErrorAction SilentlyContinue
+            Ensure-Certificates
+            & $script:DockerComposeExe --env-file $environmentFile -f $composeFile up -d --force-recreate nginx
+            if ($LASTEXITCODE -ne 0) { throw "Certificate renewed, but Nginx could not be recreated." }
         }
         "reset" {
             Assert-Prerequisites

@@ -33,9 +33,9 @@ services:
       BOOTSTRAP_ADMIN_USERNAME: ${BOOTSTRAP_ADMIN_USERNAME}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD}
       FACTORY_NAME: ${FACTORY_NAME}
-      ALLOWED_ORIGINS: http://${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8080}
+      ALLOWED_ORIGINS: https://${APP_DOMAIN:-nowash-track.com}
       TRANSPORT_PROVIDER: simulator
-      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
     expose: ["8080"]
     healthcheck:
       test: ["CMD-SHELL", "curl --fail --silent http://localhost:8080/actuator/health | grep -q UP"]
@@ -58,14 +58,37 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8080}:80"
+      - "${BIND_ADDRESS:-127.0.0.1}:80:80"
+      - "${BIND_ADDRESS:-127.0.0.1}:443:443"
     volumes:
-      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./deployment/certificates:/etc/nginx/certs:ro
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-nowash-track.com}
+      NGINX_ENVSUBST_FILTER: ^APP_DOMAIN$
     networks: [edge]
     security_opt: ["no-new-privileges:true"]
     logging:
       driver: json-file
       options: {max-size: "10m", max-file: "5"}
+
+  dns:
+    image: coredns/coredns:1.12.4
+    restart: unless-stopped
+    command: ["-conf", "/etc/coredns/Corefile"]
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-nowash-track.com}
+      BIND_ADDRESS: ${BIND_ADDRESS:-127.0.0.1}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:53:53/udp"
+      - "${BIND_ADDRESS:-127.0.0.1}:53:53/tcp"
+    volumes:
+      - ./deployment/dns/Corefile:/etc/coredns/Corefile:ro
+    networks: [edge]
+    security_opt: ["no-new-privileges:true"]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
 
 volumes:
   nwtrack-db:
