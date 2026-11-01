@@ -6,7 +6,7 @@ spring:
       ddl-auto: none
 nwtrack:
   factory-name: Test Factory
-  storage-token-tracking-enabled: true
+  allowed-origins: http://localhost:8080
   security:
     jwt-secret: bm90LWZvci1wcm9kdWN0aW9uLWNoYW5nZS10aGlzLTMyLWJ5dGUta2V5ISE=
     issuer: nwtrack-test

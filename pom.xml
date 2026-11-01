@@ -9,7 +9,7 @@
   </parent>
   <groupId>com.yesbee</groupId>
   <artifactId>nwtrack-api</artifactId>
-  <version>0.1.0-SNAPSHOT</version>
+  <version>1.0.0</version>
   <name>NW Track API</name>
   <description>On-premise Style-to-Lot production traceability service</description>
   <properties>
@@ -36,5 +36,12 @@
   <build><plugins>
     <plugin><groupId>org.springframework.boot</groupId><artifactId>spring-boot-maven-plugin</artifactId></plugin>
     <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><configuration><parameters>true</parameters></configuration></plugin>
+    <plugin>
+      <groupId>org.apache.maven.plugins</groupId><artifactId>maven-enforcer-plugin</artifactId><version>3.6.2</version>
+      <executions><execution><id>enforce-toolchain</id><goals><goal>enforce</goal></goals><configuration><rules>
+        <requireJavaVersion><version>[25,26)</version></requireJavaVersion>
+        <requireMavenVersion><version>[3.9,)</version></requireMavenVersion>
+      </rules></configuration></execution></executions>
+    </plugin>
   </plugins></build>
 </project>

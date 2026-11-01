@@ -9,7 +9,7 @@ class PlacementCommandValidationTest {
     @Test
     void rejectsMissingDestinationTypeBeforeWorkflowExecution() {
         try (var factory = Validation.buildDefaultValidatorFactory()) {
-            var command = new PlacementService.PlacementCommand(null, null, null, null);
+            var command = new PlacementService.PlacementCommand(null, null, null);
             var violations = factory.getValidator().validate(command);
 
             assertThat(violations).anySatisfy(violation ->

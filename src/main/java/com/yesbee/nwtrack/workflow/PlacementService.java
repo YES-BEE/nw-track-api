@@ -1,8 +1,6 @@
 package com.yesbee.nwtrack.workflow;
 
-import com.yesbee.nwtrack.config.NwTrackProperties;
 import com.yesbee.nwtrack.shared.BusinessRuleException;
-import com.yesbee.nwtrack.storage.StorageTokenPolicy;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,8 +12,8 @@ import java.util.UUID;
 
 @Service
 public class PlacementService {
-    private final JdbcTemplate jdbc; private final NwTrackProperties properties; private final StorageTokenPolicy tokens;private final StationAccessService access;
-    public PlacementService(JdbcTemplate jdbc, NwTrackProperties properties, StorageTokenPolicy tokens,StationAccessService access) { this.jdbc=jdbc; this.properties=properties; this.tokens=tokens;this.access=access; }
+    private final JdbcTemplate jdbc;private final StationAccessService access;
+    public PlacementService(JdbcTemplate jdbc,StationAccessService access) { this.jdbc=jdbc;this.access=access; }
 
     @Transactional
     public PlacementResult receiveAndPlace(UUID visitId, UUID operatorId, PlacementCommand command) {
@@ -28,10 +26,9 @@ public class PlacementService {
             if (command.storageLocationId() == null) throw new BusinessRuleException("STORAGE_REQUIRED", "Storage Location is required");
             Integer validStorage=jdbc.queryForObject("select count(*) from storage_locations where id=? and station_id=? and active",Integer.class,command.storageLocationId(),visit.stationId());
             if(validStorage==null||validStorage==0)throw new BusinessRuleException("STORAGE_STATION_MISMATCH","Storage Location does not belong to the receiving Station");
-            String token = tokens.normalize(properties.storageTokenTrackingEnabled(), command.tokenNumber());
             UUID occupancyId = UUID.randomUUID();
-            jdbc.update("insert into storage_occupancies(id,lot_id,station_id,storage_location_id,token_number,normalized_token_number,stored_by,stored_at) values (?,?,?,?,?,?,?,?)",
-                    occupancyId, visit.lotId(), visit.stationId(), command.storageLocationId(), command.tokenNumber(), token, operatorId, now);
+            jdbc.update("insert into storage_occupancies(id,lot_id,station_id,storage_location_id,stored_by,stored_at) values (?,?,?,?,?,?)",
+                    occupancyId, visit.lotId(), visit.stationId(), command.storageLocationId(), operatorId, now);
             jdbc.update("update lots set status='IN_STORAGE',current_location_type='STORAGE',current_location_id=?,version=version+1 where id=?", command.storageLocationId(), visit.lotId());
         } else {
             if (command.processExecutionId() == null) throw new BusinessRuleException("PROCESS_REQUIRED", "Process execution is required");
@@ -46,7 +43,7 @@ public class PlacementService {
         return new PlacementResult(visit.lotId(), command.destinationType(), now);
     }
     public enum DestinationType { PROCESS_AREA, STORAGE }
-    public record PlacementCommand(@NotNull DestinationType destinationType, UUID processExecutionId, UUID storageLocationId, String tokenNumber) {}
+    public record PlacementCommand(@NotNull DestinationType destinationType, UUID processExecutionId, UUID storageLocationId) {}
     public record PlacementResult(UUID lotId, DestinationType destinationType, OffsetDateTime placedAt) {}
     private record VisitRow(UUID id, UUID lotId, UUID stationId, UUID assignmentId,UUID trolleyId) {}
 }

@@ -13,7 +13,7 @@ public class FactoryConfigController {
     private final NwTrackProperties properties;
     public FactoryConfigController(NwTrackProperties properties) { this.properties = properties; }
     @GetMapping @Operation(summary = "Get effective factory configuration") public FactoryConfigResponse get() {
-        return new FactoryConfigResponse(properties.factoryName(), properties.storageTokenTrackingEnabled(), properties.transport().provider());
+        return new FactoryConfigResponse(properties.factoryName(), properties.transport().provider());
     }
-    public record FactoryConfigResponse(String factoryName, boolean storageTokenTrackingEnabled, String transportProvider) {}
+    public record FactoryConfigResponse(String factoryName, String transportProvider) {}
 }

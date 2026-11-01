@@ -31,7 +31,7 @@ class AuthControllerTest {
                 .header("alg", "HS256").subject("operator1")
                 .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(900)).build());
         var security = new NwTrackProperties.Security("secret", "nwtrack", Duration.ofMinutes(15), "admin", "password");
-        var properties = new NwTrackProperties("Factory", true, security,
+        var properties = new NwTrackProperties("Factory", security,
                 new NwTrackProperties.Transport("simulator", Duration.ofSeconds(1)));
 
         var response = new AuthController(manager, encoder, properties)

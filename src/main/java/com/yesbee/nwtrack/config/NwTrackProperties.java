@@ -12,7 +12,6 @@ import java.time.Duration;
 @ConfigurationProperties("nwtrack")
 public record NwTrackProperties(
         @NotBlank String factoryName,
-        boolean storageTokenTrackingEnabled,
         @Valid @NotNull Security security,
         @Valid @NotNull Transport transport) {
 
