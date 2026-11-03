@@ -21,7 +21,7 @@ public class WorkflowController {
 
     @PostMapping("/{visitId}/receive-and-place")
     @Operation(summary = "Receive and place a lot", description = "Places the lot in its process or storage area before releasing its trolley")
-    @PreAuthorize("hasAnyRole('OPERATOR','ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("isAuthenticated()")
     public PlacementService.PlacementResult receiveAndPlace(@PathVariable UUID visitId, @AuthenticationPrincipal Jwt jwt,
                                                              @Valid @RequestBody PlacementService.PlacementCommand command) {
         return placements.receiveAndPlace(visitId, actors.id(jwt), command);

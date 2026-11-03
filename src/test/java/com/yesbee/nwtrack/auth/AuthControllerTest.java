@@ -26,7 +26,7 @@ class AuthControllerTest {
         when(manager.authenticate(any())).thenReturn(authentication);
         when(authentication.getName()).thenReturn("operator1");
         when(authentication.getAuthorities()).thenAnswer(ignored ->
-                List.of(new SimpleGrantedAuthority("ROLE_OPERATOR")));
+                List.of(new SimpleGrantedAuthority("ROLE_PROCESS_MANAGER")));
         when(encoder.encode(any())).thenReturn(Jwt.withTokenValue("signed.jwt")
                 .header("alg", "HS256").subject("operator1")
                 .issuedAt(Instant.now()).expiresAt(Instant.now().plusSeconds(900)).build());
@@ -34,12 +34,12 @@ class AuthControllerTest {
         var properties = new NwTrackProperties("Factory", security,
                 new NwTrackProperties.Transport("simulator", Duration.ofSeconds(1)));
 
-        var response = new AuthController(manager, encoder, properties)
-                .login(new AuthController.LoginRequest("operator1", "password"));
+        var response = new AuthController(manager, encoder, properties,mock(AccessPolicy.class))
+                .login(new AuthController.LoginRequest("operator1", "password","PAD"));
 
         assertThat(response.accessToken()).isEqualTo("signed.jwt");
         assertThat(response.tokenType()).isEqualTo("Bearer");
         assertThat(response.expiresIn()).isEqualTo(900);
-        assertThat(response.roles()).containsExactly("OPERATOR");
+        assertThat(response.roles()).containsExactly("PROCESS_MANAGER");
     }
 }

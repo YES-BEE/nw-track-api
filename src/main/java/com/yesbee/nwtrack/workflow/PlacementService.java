@@ -34,6 +34,7 @@ public class PlacementService {
             if (command.processExecutionId() == null) throw new BusinessRuleException("PROCESS_REQUIRED", "Process execution is required");
             Integer validProcess=jdbc.queryForObject("select count(*) from process_executions where id=? and station_visit_id=?",Integer.class,command.processExecutionId(),visitId);
             if(validProcess==null||validProcess==0)throw new BusinessRuleException("PROCESS_VISIT_MISMATCH","Process execution does not belong to this Station Visit");
+            access.assertCanExecute(operatorId,command.processExecutionId());
             jdbc.update("update lots set status='AT_STATION',current_location_type='PROCESS_AREA',current_location_id=?,version=version+1 where id=?", visit.stationId(), visit.lotId());
         }
         jdbc.update("update lot_trolley_assignments set released_at=?,released_by=? where id=?", now, operatorId, visit.assignmentId());

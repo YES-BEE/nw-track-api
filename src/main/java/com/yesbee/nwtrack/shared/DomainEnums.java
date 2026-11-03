@@ -2,7 +2,7 @@ package com.yesbee.nwtrack.shared;
 
 public final class DomainEnums {
     private DomainEnums() {}
-    public enum Role { SUPER_ADMIN, ADMIN, MANAGER, OPERATOR, SUPERVISOR, DISPLAY_DEVICE }
+    public enum Role { NW, TOP_MANAGER, PRODUCTION_MANAGER, PROCESS_MANAGER, SUPERVISOR, ADMIN_IT, STATION_0 }
     public enum StyleStatus { DRAFT, RELEASED, IN_PRODUCTION, COMPLETED }
     public enum LotStatus { DRAFT, READY, DISPATCHED, AT_STATION, IN_STORAGE, IN_PROCESS, READY_FOR_DISPATCH, AT_QC, COMPLETED, CANCELLED }
     public enum VisitStatus { EXPECTED, DISPATCHED, RECEIVED, ACTIVE, READY_FOR_DISPATCH, COMPLETED }

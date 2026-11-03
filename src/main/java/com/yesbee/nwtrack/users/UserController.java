@@ -2,41 +2,50 @@ package com.yesbee.nwtrack.users;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.*;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
-
-import java.time.OffsetDateTime;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 
 @RestController @RequestMapping("/api/v1/users") @Tag(name="Users")
-@PreAuthorize("hasRole('SUPER_ADMIN')")
 public class UserController {
     private final JdbcTemplate jdbc; private final PasswordEncoder passwords;
-    public UserController(JdbcTemplate jdbc, PasswordEncoder passwords) { this.jdbc=jdbc; this.passwords=passwords; }
-    @PostMapping public UserView create(@Valid @RequestBody CreateUser r) {
+    public UserController(JdbcTemplate jdbc,PasswordEncoder passwords){this.jdbc=jdbc;this.passwords=passwords;}
+    @PostMapping @Transactional public Map<String,Object> create(@Valid @RequestBody CreateUser r){
         UUID id=UUID.randomUUID();
         jdbc.update("insert into users(id,username,display_name,password_hash,enabled,must_change_password) values (?,?,?,?,true,true)",id,r.username().trim(),r.displayName().trim(),passwords.encode(r.initialPassword()));
-        replaceRoles(id,r.roles());
-        if(r.stationId()!=null) jdbc.update("insert into user_station_assignments(user_id,station_id) values (?,?)",id,r.stationId());
-        return get(id);
+        setRole(id,r.role());saveAssignments(id,r.assignments());return get(id);
     }
-    @GetMapping public List<UserView> list(){return jdbc.query(USER_SELECT+" group by u.id,usa.station_id,usa.active_on_shift order by u.username",this::map);}
-    @GetMapping("/{id}") public UserView get(@PathVariable UUID id){return jdbc.queryForObject(USER_SELECT+" where u.id=? group by u.id,usa.station_id,usa.active_on_shift",this::map,id);}
-    @PutMapping("/{id}/roles") public UserView roles(@PathVariable UUID id,@RequestBody @NotEmpty Set<String> roles){replaceRoles(id,roles);return get(id);}
-    @PutMapping("/{id}/station-assignment") public UserView station(@PathVariable UUID id,@RequestBody StationAssignment r){jdbc.update("delete from user_station_assignments where user_id=?",id);if(r.stationId()!=null)jdbc.update("insert into user_station_assignments(user_id,station_id,active_on_shift) values (?,?,?)",id,r.stationId(),r.activeOnShift());return get(id);}
-    @PatchMapping("/{id}/status") public UserView status(@PathVariable UUID id,@RequestBody StatusRequest r){jdbc.update("update users set enabled=?,updated_at=now() where id=?",r.enabled(),id);return get(id);}
-    @PutMapping("/{id}/password") public UserView resetPassword(@PathVariable UUID id,@Valid @RequestBody PasswordReset r){if(jdbc.update("update users set password_hash=?,must_change_password=true,updated_at=now() where id=?",passwords.encode(r.temporaryPassword()),id)!=1)throw new IllegalArgumentException("Unknown user");jdbc.update("update refresh_tokens set revoked_at=now() where user_id=? and revoked_at is null",id);return get(id);}
-    private void replaceRoles(UUID id,Set<String> roles){jdbc.update("delete from user_roles where user_id=?",id);for(String role:roles){if(jdbc.update("insert into user_roles(user_id,role_id) select ?,id from roles where code=?",id,role)!=1)throw new IllegalArgumentException("Unknown role: "+role);}}
-    private UserView map(java.sql.ResultSet rs,int n)throws java.sql.SQLException{return new UserView((UUID)rs.getObject("id"),rs.getString("username"),rs.getString("display_name"),rs.getBoolean("enabled"),rs.getBoolean("must_change_password"),rs.getString("roles"),rs.getObject("station_id",UUID.class),rs.getBoolean("active_on_shift"),rs.getObject("created_at",OffsetDateTime.class));}
-    private static final String USER_SELECT="select u.id,u.username,u.display_name,u.enabled,u.must_change_password,u.created_at,string_agg(r.code,',' order by r.code) roles,usa.station_id,coalesce(usa.active_on_shift,false) active_on_shift from users u left join user_roles ur on ur.user_id=u.id left join roles r on r.id=ur.role_id left join user_station_assignments usa on usa.user_id=u.id";
-    public record CreateUser(@NotBlank String username,@NotBlank String displayName,@NotBlank String initialPassword,@NotEmpty Set<String> roles,UUID stationId){}
-    public record StationAssignment(UUID stationId,boolean activeOnShift){} public record StatusRequest(boolean enabled){}
+    @GetMapping public List<Map<String,Object>> list(){return jdbc.queryForList("select id from users order by username").stream().map(row->get((UUID)row.get("id"))).toList();}
+    @GetMapping("/{id}") public Map<String,Object> get(@PathVariable UUID id){
+        Map<String,Object> result=new LinkedHashMap<>(jdbc.queryForMap("select id,username,display_name,enabled,must_change_password,created_at from users where id=?",id));
+        result.put("role",jdbc.queryForList("select r.code from roles r join user_roles ur on ur.role_id=r.id where ur.user_id=?",String.class,id).stream().findFirst().orElse(null));
+        result.put("stations",jdbc.queryForList("select usa.station_id,s.code station_reference,usa.active_on_shift from user_station_assignments usa join stations s on s.id=usa.station_id where usa.user_id=?",id));
+        result.put("processIds",jdbc.queryForList("select process_id from user_process_assignments where user_id=?",UUID.class,id));return result;
+    }
+    @PutMapping("/{id}/roles") @Transactional public Map<String,Object> role(@PathVariable UUID id,@Valid @RequestBody RoleCommand r){setRole(id,r.role());revoke(id);return get(id);}
+    @PutMapping("/{id}/assignments") @Transactional public Map<String,Object> assignments(@PathVariable UUID id,@Valid @RequestBody Assignments r){saveAssignments(id,r);return get(id);}
+    @PatchMapping("/{id}/status") public Map<String,Object> status(@PathVariable UUID id,@RequestBody StatusRequest r){jdbc.update("update users set enabled=?,updated_at=now() where id=?",r.enabled(),id);if(!r.enabled())revoke(id);return get(id);}
+    @PutMapping("/{id}/password") @Transactional public Map<String,Object> resetPassword(@PathVariable UUID id,@Valid @RequestBody PasswordReset r){jdbc.update("update users set password_hash=?,must_change_password=true,updated_at=now() where id=?",passwords.encode(r.temporaryPassword()),id);revoke(id);return get(id);}
+    private void revoke(UUID id){jdbc.update("update refresh_tokens set revoked_at=now() where user_id=? and revoked_at is null",id);}
+    private void setRole(UUID id,String role){UUID roleId=jdbc.queryForObject("select id from roles where code=?",UUID.class,role);jdbc.update("delete from user_roles where user_id=?",id);jdbc.update("insert into user_roles values (?,?)",id,roleId);}
+    private void saveAssignments(UUID id,Assignments r){
+        if(r==null)r=new Assignments(List.of(),Set.of());
+        Set<UUID> stations=new HashSet<>();for(StationAssignment s:r.stations()){if(!stations.add(s.stationId()))throw new IllegalArgumentException("Duplicate station assignment");}
+        for(UUID process:r.processIds()){
+            UUID station=jdbc.queryForObject("select station_id from processes where id=? and active",UUID.class,process);
+            if(!stations.contains(station))throw new IllegalArgumentException("Every assigned process must belong to an assigned station");
+        }
+        jdbc.update("delete from user_process_assignments where user_id=?",id);jdbc.update("delete from user_station_assignments where user_id=?",id);
+        for(StationAssignment s:r.stations())jdbc.update("insert into user_station_assignments(user_id,station_id,active_on_shift) values (?,?,?)",id,s.stationId(),s.activeOnShift());
+        for(UUID process:r.processIds())jdbc.update("insert into user_process_assignments values (?,?)",id,process);
+    }
+    public record CreateUser(@NotBlank String username,@NotBlank String displayName,@NotBlank String initialPassword,@NotBlank String role,@Valid Assignments assignments){}
+    public record RoleCommand(@NotBlank String role){}
+    public record Assignments(@NotNull List<@Valid StationAssignment> stations,@NotNull Set<UUID> processIds){}
+    public record StationAssignment(@NotNull UUID stationId,boolean activeOnShift){}
+    public record StatusRequest(boolean enabled){}
     public record PasswordReset(@NotBlank String temporaryPassword){}
-    public record UserView(UUID id,String username,String displayName,boolean enabled,boolean mustChangePassword,String roles,UUID stationId,boolean activeOnShift,OffsetDateTime createdAt){}
 }

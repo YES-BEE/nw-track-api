@@ -9,7 +9,7 @@ Client developers should start with [docs/API_INTEGRATION_GUIDE.md](docs/API_INT
 - Spring Boot 4.1 / Java 25 Maven build.
 - PostgreSQL 17 schema managed automatically by Flyway.
 - Local account authentication, Argon2 password hashes, JWT access tokens and revocable refresh sessions.
-- One-time bootstrap Super Admin.
+- One-time bootstrap NW administrator.
 - Style Process route derivation with repeated-Station rejection.
 - Placement-before-delink service for Process Area and Storage.
 - NFC-managed Stations, Processes, Machines, Storage Areas, Storage Units and Trolleys with assignment history.
@@ -106,13 +106,13 @@ sudo deployment/linux/nwtrack.sh stop
 
 ## Login
 
-On an empty database the service creates one Super Admin from `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_PASSWORD`. Change the password immediately. Secrets are mandatory runtime configuration and have no production fallback values.
+On an empty database the service creates one NW administrator from `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_PASSWORD`. Change the password immediately. Secrets are mandatory runtime configuration and have no production fallback values.
 
 ```http
 POST /api/v1/auth/login
 Content-Type: application/json
 
-{"username":"admin","password":"..."}
+{"username":"admin","password":"...","clientType":"PC"}
 ```
 
 Use the returned JWT as `Authorization: Bearer <token>`.
@@ -124,6 +124,10 @@ Use the returned JWT as `Authorization: Bearer <token>`.
 - In optional HTTPS mode, the installer creates a separate internal CA at each factory for the shared local hostname; its private key remains on that factory server and its CA certificate must be trusted by clients.
 - The simulator implements the same transport-provider interface intended for the Phase 2 AGV/AMR Fleet Manager adapter.
 - Back up the named PostgreSQL volume/database externally to meet the selected five-minute RPO; a single physical server alone cannot provide that RPO after server loss.
+## Frontend integration handoff
+
+Import the collection and LAN environment from [docs/postman](docs/postman/README.md). It includes 131 requests in 18 use-case folders. The [v8 field and access design](docs/CONFIGURATION_V8_DESIGN.md) documents the seven fixed roles, multiple assignments, NFC modes and final QC behavior.
+
 ## API documentation
 
 Swagger UI is enabled for the factory-local deployment at `/swagger-ui.html`. Set `SWAGGER_ENABLED=false` and recreate the API container if a factory security policy requires it to be disabled.

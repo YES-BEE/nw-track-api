@@ -7,6 +7,6 @@ import org.springframework.web.bind.annotation.*;
 public class ProviderHealthController {
     private final TransportProvider provider;
     public ProviderHealthController(TransportProvider provider){this.provider=provider;}
-    @GetMapping("/health") @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN','SUPERVISOR')")
+    @GetMapping("/health") @PreAuthorize("isAuthenticated()")
     public TransportController.ProviderResponse health(){return new TransportController.ProviderResponse(provider.code(),provider.health());}
 }

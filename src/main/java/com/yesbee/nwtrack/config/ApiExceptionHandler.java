@@ -17,6 +17,11 @@ import java.util.stream.Collectors;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    ProblemDetail forbidden(org.springframework.security.access.AccessDeniedException ex) {
+        ProblemDetail detail=ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN,ex.getMessage());
+        detail.setProperty("code","ACCESS_DENIED");return detail;
+    }
     @ExceptionHandler(EmptyResultDataAccessException.class)
     ProblemDetail notFound(EmptyResultDataAccessException ex) {
         ProblemDetail detail=ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND,"Requested resource was not found");detail.setTitle("Not found");detail.setProperty("code","NOT_FOUND");return detail;
