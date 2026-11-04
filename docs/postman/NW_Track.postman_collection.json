@@ -1,7 +1,7 @@
 {
     "info":  {
                  "name":  "NW Track - Manual API requests",
-                 "description":  "Standard Postman requests in use-case folders. No pre-request or post-response scripts. Import this JSON using Import \u003e Files, select the LAN environment, then double-click a request under Collections to open a normal request tab and click Send. Copy tokens and resource IDs from responses into environment variables manually. See README.md for instructions.",
+                 "description":  "135 normal requests in 18 folders. No scripts: open tabs and click Send. Users receive processAssignments with per-process activeOnShift; stations are derived. Configuration accepts mock fields only; deviceCount must match devices. Tags expose ACTIVE/DELETED status separately from assigned. Copy tokens and IDs into environment variables manually. See README.md and ../PROCESS_ASSIGNMENT_V5.md.",
                  "schema":  "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
              },
     "auth":  {
@@ -47,7 +47,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\",\n  \"clientType\": \"{{clientType}}\"\n}",
+                                                                   "raw":  "{\r\n    \"username\":  \"{{username}}\",\r\n    \"password\":  \"{{password}}\",\r\n    \"clientType\":  \"{{clientType}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -113,7 +113,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"currentPassword\": \"{{password}}\",\n  \"newPassword\": \"{{newPassword}}\"\n}",
+                                                                   "raw":  "{\r\n    \"currentPassword\":  \"{{password}}\",\r\n    \"newPassword\":  \"{{newPassword}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -176,7 +176,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+                                                                   "raw":  "{\r\n    \"refreshToken\":  \"{{refreshToken}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -268,7 +268,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}",
+                                                                   "raw":  "{\r\n    \"refreshToken\":  \"{{refreshToken}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -360,7 +360,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"pcAccess\": true,\n  \"padAccess\": true,\n  \"permissions\": [\n    \"READ\",\n    \"REPORTS\",\n    \"OPERATE\",\n    \"QC\",\n    \"TRANSPORT\"\n  ]\n}",
+                                                                   "raw":  "{\r\n    \"pcAccess\":  true,\r\n    \"padAccess\":  true,\r\n    \"permissions\":  [\r\n                        \"READ\",\r\n                        \"REPORTS\",\r\n                        \"OPERATE\",\r\n                        \"QC\",\r\n                        \"TRANSPORT\"\r\n                    ]\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -402,7 +402,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"username\": \"pm-{{$timestamp}}\",\n  \"displayName\": \"Process Manager\",\n  \"initialPassword\": \"{{newUserPassword}}\",\n  \"role\": \"PROCESS_MANAGER\",\n  \"assignments\": {\n    \"stations\": [\n      {\n        \"stationId\": \"{{stationId}}\",\n        \"activeOnShift\": true\n      }\n    ],\n    \"processIds\": [\n      \"{{processId}}\"\n    ]\n  }\n}",
+                                                                   "raw":  "{\r\n    \"username\":  \"pm-{{$timestamp}}\",\r\n    \"displayName\":  \"Process Manager\",\r\n    \"initialPassword\":  \"{{newUserPassword}}\",\r\n    \"role\":  \"PROCESS_MANAGER\",\r\n    \"processAssignments\":  [\r\n                               {\r\n                                   \"activeOnShift\":  true,\r\n                                   \"processId\":  \"{{processId}}\"\r\n                               }\r\n                           ]\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -490,7 +490,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"role\": \"PROCESS_MANAGER\"\n}",
+                                                                   "raw":  "{\r\n    \"role\":  \"PROCESS_MANAGER\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -529,7 +529,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"stations\": [\n    {\n      \"stationId\": \"{{stationId}}\",\n      \"activeOnShift\": true\n    }\n  ],\n  \"processIds\": [\n    \"{{processId}}\"\n  ]\n}",
+                                                                   "raw":  "{\r\n    \"processAssignments\":  [\r\n                               {\r\n                                   \"activeOnShift\":  true,\r\n                                   \"processId\":  \"{{processId}}\"\r\n                               },\r\n                               {\r\n                                   \"activeOnShift\":  false,\r\n                                   \"processId\":  \"{{deviceProcessId}}\"\r\n                               }\r\n                           ]\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -568,7 +568,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"enabled\": true\n}",
+                                                                   "raw":  "{\r\n    \"enabled\":  true\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -607,13 +607,76 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"temporaryPassword\": \"{{newUserPassword}}\"\n}",
+                                                                   "raw":  "{\r\n    \"temporaryPassword\":  \"{{newUserPassword}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
                                                                                            }
                                                                                }
                                                                }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "Update user profile and process assignments",
+                                      "request":  {
+                                                      "method":  "PUT",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     },
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{baseUrl}}/api/v1/users/{{userId}}",
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "api",
+                                                                               "v1",
+                                                                               "users",
+                                                                               "{{userId}}"
+                                                                           ]
+                                                              },
+                                                      "description":  "Normal request tab: edit fields and click Send. Copy tokens and IDs into the environment manually.",
+                                                      "body":  {
+                                                                   "raw":  "{\r\n    \"username\":  \"pm-user\",\r\n    \"displayName\":  \"Process Manager\",\r\n    \"processAssignments\":  [\r\n                               {\r\n                                   \"activeOnShift\":  true,\r\n                                   \"processId\":  \"{{processId}}\"\r\n                               }\r\n                           ],\r\n    \"role\":  \"PROCESS_MANAGER\"\r\n}",
+                                                                   "options":  {
+                                                                                   "raw":  {
+                                                                                               "language":  "json"
+                                                                                           }
+                                                                               },
+                                                                   "mode":  "raw"
+                                                               }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "Delete user (disable; retain history)",
+                                      "request":  {
+                                                      "method":  "DELETE",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{baseUrl}}/api/v1/users/{{userId}}",
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "api",
+                                                                               "v1",
+                                                                               "users",
+                                                                               "{{userId}}"
+                                                                           ]
+                                                              },
+                                                      "description":  "Normal request tab: edit fields and click Send. Copy tokens and IDs into the environment manually."
                                                   }
                                   }
                               ]
@@ -649,7 +712,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"uid\": \"{{processNfcUid}}\",\n  \"assetType\": \"PROCESS\",\n  \"assetId\": \"{{processId}}\",\n  \"reason\": \"Initial assignment\"\n}",
+                                                                   "raw":  "{\r\n    \"uid\":  \"{{processNfcUid}}\",\r\n    \"assetType\":  \"PROCESS\",\r\n    \"assetId\":  \"{{processId}}\",\r\n    \"reason\":  \"Initial assignment\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -687,7 +750,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"assetType\": \"PROCESS\",\n  \"assetId\": \"{{processId}}\",\n  \"reason\": \"Replace assignment\"\n}",
+                                                                   "raw":  "{\r\n    \"assetType\":  \"PROCESS\",\r\n    \"assetId\":  \"{{processId}}\",\r\n    \"reason\":  \"Replace assignment\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -725,7 +788,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"reason\": \"Unassign before reuse\"\n}",
+                                                                   "raw":  "{\r\n    \"reason\":  \"Unassign before reuse\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -788,7 +851,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"name\": \"Preparation process tag\",\n  \"uid\": \"{{processNfcUid}}\"\n}",
+                                                                   "raw":  "{\r\n    \"name\":  \"Preparation process tag\",\r\n    \"uid\":  \"{{processNfcUid}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -850,7 +913,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"name\": \"Preparation process tag\",\n  \"uid\": \"{{processNfcUid}}\"\n}",
+                                                                   "raw":  "{\r\n    \"name\":  \"Preparation process tag\",\r\n    \"uid\":  \"{{processNfcUid}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -939,7 +1002,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"active\": true\n}",
+                                                                   "raw":  "{\r\n    \"status\":  \"ACTIVE\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -976,7 +1039,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"name\": \"device tag\",\n  \"uid\": \"{{deviceNfcUid}}\"\n}",
+                                                                   "raw":  "{\r\n    \"name\":  \"device tag\",\r\n    \"uid\":  \"{{deviceNfcUid}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1013,7 +1076,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"name\": \"storage area tag\",\n  \"uid\": \"{{storageNfcUid}}\"\n}",
+                                                                   "raw":  "{\r\n    \"name\":  \"storage area tag\",\r\n    \"uid\":  \"{{storageNfcUid}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1050,7 +1113,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"name\": \"quality process tag\",\n  \"uid\": \"{{qualityNfcUid}}\"\n}",
+                                                                   "raw":  "{\r\n    \"name\":  \"quality process tag\",\r\n    \"uid\":  \"{{qualityNfcUid}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1087,13 +1150,72 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"name\": \"storage unit tag\",\n  \"uid\": \"{{storageUnitNfcUid}}\"\n}",
+                                                                   "raw":  "{\r\n    \"name\":  \"storage unit tag\",\r\n    \"uid\":  \"{{storageUnitNfcUid}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
                                                                                            }
                                                                                }
                                                                }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "List tag lifecycle statuses",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{baseUrl}}/api/v1/nfc-tags/statuses",
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "api",
+                                                                               "v1",
+                                                                               "nfc-tags",
+                                                                               "statuses"
+                                                                           ]
+                                                              },
+                                                      "description":  "Normal request tab: edit fields and click Send. Copy tokens and IDs into the environment manually."
+                                                  }
+                                  },
+                                  {
+                                      "name":  "Available ACTIVE tags for configuration dropdowns",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{baseUrl}}/api/v1/nfc-tags?status=ACTIVE\u0026assigned=false",
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "api",
+                                                                               "v1",
+                                                                               "nfc-tags"
+                                                                           ],
+                                                                  "query":  [
+                                                                                {
+                                                                                    "key":  "status",
+                                                                                    "value":  "ACTIVE"
+                                                                                },
+                                                                                {
+                                                                                    "key":  "assigned",
+                                                                                    "value":  "false"
+                                                                                }
+                                                                            ]
+                                                              },
+                                                      "description":  "Normal request tab: edit fields and click Send. Copy tokens and IDs into the environment manually."
                                                   }
                                   }
                               ]
@@ -1129,7 +1251,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"code\": \"01\",\n  \"name\": \"Preparation station\",\n  \"stationType\": \"PRODUCTION\",\n  \"stationZero\": true,\n  \"qc\": false\n}",
+                                                                   "raw":  "{\r\n    \"code\":  \"01\",\r\n    \"name\":  \"Preparation station\",\r\n    \"stationType\":  \"PRODUCTION\",\r\n    \"stationZero\":  true,\r\n    \"qc\":  false\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1216,7 +1338,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"code\": \"01\",\n  \"name\": \"Preparation station\",\n  \"stationType\": \"PRODUCTION\",\n  \"stationZero\": true,\n  \"qc\": false\n}",
+                                                                   "raw":  "{\r\n    \"code\":  \"01\",\r\n    \"name\":  \"Preparation station\",\r\n    \"stationType\":  \"PRODUCTION\",\r\n    \"stationZero\":  true,\r\n    \"qc\":  false\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1255,7 +1377,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"active\": true\n}",
+                                                                   "raw":  "{\r\n    \"active\":  true\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1297,7 +1419,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"code\": \"PREP-{{$timestamp}}\",\n  \"name\": \"Lot Preparation\",\n  \"description\": \"Preparation and sorting\",\n  \"stationReference\": \"01\",\n  \"nfcMode\": \"PROCESS\",\n  \"quality\": false,\n  \"nfcUid\": \"{{processNfcUid}}\",\n  \"devices\": [],\n  \"targetDurationSeconds\": 120\n}",
+                                                                   "raw":  "{\r\n    \"name\":  \"Lot Preparation\",\r\n    \"description\":  \"Preparation and sorting\",\r\n    \"stationNumber\":  \"01\",\r\n    \"nfcMode\":  \"PROCESS\",\r\n    \"quality\":  false,\r\n    \"deviceCount\":  0,\r\n    \"devices\":  [\r\n\r\n                ],\r\n    \"nfcUid\":  \"{{processNfcUid}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1384,7 +1506,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"code\": \"PREP-{{$timestamp}}\",\n  \"name\": \"Lot Preparation\",\n  \"description\": \"Preparation and sorting\",\n  \"stationReference\": \"01\",\n  \"nfcMode\": \"PROCESS\",\n  \"quality\": false,\n  \"nfcUid\": \"{{processNfcUid}}\",\n  \"devices\": [],\n  \"targetDurationSeconds\": 120\n}",
+                                                                   "raw":  "{\r\n    \"name\":  \"Lot Preparation\",\r\n    \"description\":  \"Preparation and sorting\",\r\n    \"stationNumber\":  \"01\",\r\n    \"nfcMode\":  \"PROCESS\",\r\n    \"quality\":  false,\r\n    \"deviceCount\":  0,\r\n    \"devices\":  [\r\n\r\n                ],\r\n    \"nfcUid\":  \"{{processNfcUid}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1423,7 +1545,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"active\": true\n}",
+                                                                   "raw":  "{\r\n    \"active\":  true\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1487,7 +1609,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "[\n  \"{{processId}}\",\n  \"{{qualityProcessId}}\"\n]",
+                                                                   "raw":  "[\r\n    \"{{processId}}\",\r\n    \"{{qualityProcessId}}\"\r\n]",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1524,7 +1646,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"code\": \"WASH-{{$timestamp}}\",\n  \"name\": \"Washing\",\n  \"description\": \"Preparation and sorting\",\n  \"stationReference\": \"01\",\n  \"nfcMode\": \"DEVICES\",\n  \"quality\": false,\n  \"nfcUid\": null,\n  \"devices\": [\n    {\n      \"name\": \"Washer 01\",\n      \"description\": \"Main washer\",\n      \"type\": \"WASHER\",\n      \"nfcUid\": \"{{deviceNfcUid}}\"\n    }\n  ],\n  \"targetDurationSeconds\": 120\n}",
+                                                                   "raw":  "{\r\n    \"name\":  \"Washing\",\r\n    \"description\":  \"Preparation and sorting\",\r\n    \"stationNumber\":  \"01\",\r\n    \"nfcMode\":  \"DEVICES\",\r\n    \"quality\":  false,\r\n    \"deviceCount\":  1,\r\n    \"devices\":  [\r\n                    {\r\n                        \"name\":  \"Washer 01\",\r\n                        \"description\":  \"Main washer\",\r\n                        \"nfcUid\":  \"{{deviceNfcUid}}\"\r\n                    }\r\n                ]\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1561,7 +1683,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"code\": \"QC-{{$timestamp}}\",\n  \"name\": \"Quality Control\",\n  \"description\": \"Preparation and sorting\",\n  \"stationReference\": \"QC\",\n  \"nfcMode\": \"PROCESS\",\n  \"quality\": true,\n  \"nfcUid\": \"{{qualityNfcUid}}\",\n  \"devices\": [],\n  \"targetDurationSeconds\": 120\n}",
+                                                                   "raw":  "{\r\n    \"name\":  \"Quality Control\",\r\n    \"description\":  \"Preparation and sorting\",\r\n    \"stationNumber\":  \"QC\",\r\n    \"nfcMode\":  \"PROCESS\",\r\n    \"quality\":  true,\r\n    \"deviceCount\":  0,\r\n    \"devices\":  [\r\n\r\n                ],\r\n    \"nfcUid\":  \"{{qualityNfcUid}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1603,7 +1725,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"stationId\": \"{{stationId}}\",\n  \"processId\": \"{{deviceProcessId}}\",\n  \"name\": \"Washer\",\n  \"type\": \"WASHER\",\n  \"description\": \"Main washing machine\",\n  \"nfcUids\": [\n    \"{{deviceNfcUid}}\"\n  ]\n}",
+                                                                   "raw":  "{\r\n    \"processId\":  \"{{deviceProcessId}}\",\r\n    \"name\":  \"Washer\",\r\n    \"description\":  \"Main washing machine\",\r\n    \"nfcUid\":  \"{{deviceNfcUid}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1690,7 +1812,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"stationId\": \"{{stationId}}\",\n  \"processId\": \"{{deviceProcessId}}\",\n  \"name\": \"Washer\",\n  \"type\": \"WASHER\",\n  \"description\": \"Main washing machine\",\n  \"nfcUids\": [\n    \"{{deviceNfcUid}}\"\n  ]\n}",
+                                                                   "raw":  "{\r\n    \"processId\":  \"{{deviceProcessId}}\",\r\n    \"name\":  \"Washer\",\r\n    \"description\":  \"Main washing machine\",\r\n    \"nfcUid\":  \"{{deviceNfcUid}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1729,7 +1851,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"status\": \"AVAILABLE\"\n}",
+                                                                   "raw":  "{\r\n    \"status\":  \"AVAILABLE\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1796,7 +1918,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"stationReference\": \"01\",\n  \"code\": \"STORE-{{$timestamp}}\",\n  \"name\": \"Preparation storage\",\n  \"description\": \"Incoming lots\",\n  \"nfcUids\": [\n    \"{{storageNfcUid}}\"\n  ]\n}",
+                                                                   "raw":  "{\r\n    \"storageNumber\":  \"STORE-{{$timestamp}}\",\r\n    \"description\":  \"Incoming lots\",\r\n    \"stationNumber\":  \"01\",\r\n    \"nfcUid\":  \"{{storageNfcUid}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1858,7 +1980,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"stationReference\": \"01\",\n  \"code\": \"STORE-{{$timestamp}}\",\n  \"name\": \"Preparation storage\",\n  \"description\": \"Incoming lots\",\n  \"nfcUids\": [\n    \"{{storageNfcUid}}\"\n  ]\n}",
+                                                                   "raw":  "{\r\n    \"storageNumber\":  \"STORE-{{$timestamp}}\",\r\n    \"description\":  \"Incoming lots\",\r\n    \"stationNumber\":  \"01\",\r\n    \"nfcUid\":  \"{{storageNfcUid}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1897,7 +2019,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"active\": true\n}",
+                                                                   "raw":  "{\r\n    \"active\":  true\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1936,7 +2058,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"code\": \"UNIT-{{$timestamp}}\",\n  \"name\": \"Rack A\",\n  \"nfcUids\": [\n    \"{{storageUnitNfcUid}}\"\n  ]\n}",
+                                                                   "raw":  "{\r\n    \"code\":  \"UNIT-{{$timestamp}}\",\r\n    \"name\":  \"Rack A\",\r\n    \"nfcUids\":  [\r\n                    \"{{storageUnitNfcUid}}\"\r\n                ]\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -1974,7 +2096,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"code\": \"UNIT-{{$timestamp}}\",\n  \"name\": \"Rack A\",\n  \"nfcUids\": [\n    \"{{storageUnitNfcUid}}\"\n  ]\n}",
+                                                                   "raw":  "{\r\n    \"code\":  \"UNIT-{{$timestamp}}\",\r\n    \"name\":  \"Rack A\",\r\n    \"nfcUids\":  [\r\n                    \"{{storageUnitNfcUid}}\"\r\n                ]\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2112,7 +2234,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"stationId\": \"{{stationId}}\",\n  \"storageAreaId\": \"{{storageAreaId}}\",\n  \"code\": \"UNIT-{{$timestamp}}\",\n  \"name\": \"Rack A\"\n}",
+                                                                   "raw":  "{\r\n    \"stationId\":  \"{{stationId}}\",\r\n    \"storageAreaId\":  \"{{storageAreaId}}\",\r\n    \"code\":  \"UNIT-{{$timestamp}}\",\r\n    \"name\":  \"Rack A\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2226,7 +2348,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"active\": true\n}",
+                                                                   "raw":  "{\r\n    \"active\":  true\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2268,7 +2390,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"code\": \"TROLLEY-{{$timestamp}}\"\n}",
+                                                                   "raw":  "{\r\n    \"code\":  \"TROLLEY-{{$timestamp}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2381,7 +2503,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"active\": true\n}",
+                                                                   "raw":  "{\r\n    \"active\":  true\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2423,7 +2545,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"styleNumber\": \"STYLE-{{$timestamp}}\",\n  \"description\": \"Sample production style\"\n}",
+                                                                   "raw":  "{\r\n    \"styleNumber\":  \"STYLE-{{$timestamp}}\",\r\n    \"description\":  \"Sample production style\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2564,7 +2686,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"description\": \"Revised style\",\n  \"processIds\": [\n    \"{{processId}}\",\n    \"{{qualityProcessId}}\"\n  ],\n  \"quantity\": 100,\n  \"reason\": \"Approved change\"\n}",
+                                                                   "raw":  "{\r\n    \"description\":  \"Revised style\",\r\n    \"processIds\":  [\r\n                       \"{{processId}}\",\r\n                       \"{{qualityProcessId}}\"\r\n                   ],\r\n    \"quantity\":  100,\r\n    \"reason\":  \"Approved change\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2604,7 +2726,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"description\": \"Revised style\",\n  \"processIds\": [\n    \"{{processId}}\",\n    \"{{qualityProcessId}}\"\n  ],\n  \"quantity\": 100,\n  \"reason\": \"Approved change\"\n}",
+                                                                   "raw":  "{\r\n    \"description\":  \"Revised style\",\r\n    \"processIds\":  [\r\n                       \"{{processId}}\",\r\n                       \"{{qualityProcessId}}\"\r\n                   ],\r\n    \"quantity\":  100,\r\n    \"reason\":  \"Approved change\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2669,7 +2791,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"lotNumber\": \"LOT-{{$timestamp}}\",\n  \"quantity\": 100\n}",
+                                                                   "raw":  "{\r\n    \"lotNumber\":  \"LOT-{{$timestamp}}\",\r\n    \"quantity\":  100\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2785,7 +2907,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"reason\": \"Order cancelled\"\n}",
+                                                                   "raw":  "{\r\n    \"reason\":  \"Order cancelled\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2829,7 +2951,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"destinationType\": \"PROCESS_AREA\",\n  \"processExecutionId\": \"{{executionId}}\",\n  \"storageLocationId\": null\n}",
+                                                                   "raw":  "{\r\n    \"destinationType\":  \"PROCESS_AREA\",\r\n    \"processExecutionId\":  \"{{executionId}}\",\r\n    \"storageLocationId\":  null\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2868,7 +2990,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"destinationType\": \"STORAGE\",\n  \"processExecutionId\": null,\n  \"storageLocationId\": \"{{storageUnitId}}\"\n}",
+                                                                   "raw":  "{\r\n    \"destinationType\":  \"STORAGE\",\r\n    \"processExecutionId\":  null,\r\n    \"storageLocationId\":  \"{{storageUnitId}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2911,7 +3033,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"uid\": \"{{processNfcUid}}\"\n}",
+                                                                   "raw":  "{\r\n    \"uid\":  \"{{processNfcUid}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2950,7 +3072,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"trolleyId\": \"{{trolleyId}}\"\n}",
+                                                                   "raw":  "{\r\n    \"trolleyId\":  \"{{trolleyId}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3015,7 +3137,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"lotId\": \"{{lotId}}\",\n  \"trolleyId\": \"{{trolleyId}}\"\n}",
+                                                                   "raw":  "{\r\n    \"lotId\":  \"{{lotId}}\",\r\n    \"trolleyId\":  \"{{trolleyId}}\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3054,7 +3176,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"processNfcUid\": \"{{processNfcUid}}\",\n  \"machineNfcUids\": []\n}",
+                                                                   "raw":  "{\r\n    \"processNfcUid\":  \"{{processNfcUid}}\",\r\n    \"machineNfcUids\":  [\r\n\r\n                       ]\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3093,7 +3215,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{}",
+                                                                   "raw":  "{\r\n\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3132,7 +3254,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{}",
+                                                                   "raw":  "{\r\n\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3171,7 +3293,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{}",
+                                                                   "raw":  "{\r\n\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3210,7 +3332,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{}",
+                                                                   "raw":  "{\r\n\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3249,7 +3371,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{}",
+                                                                   "raw":  "{\r\n\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3288,7 +3410,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{}",
+                                                                   "raw":  "{\r\n\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3327,7 +3449,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"oldMachineNfcUid\": \"{{deviceNfcUid}}\",\n  \"newMachineNfcUid\": \"{{replacementDeviceNfcUid}}\",\n  \"reason\": \"Machine unavailable\"\n}",
+                                                                   "raw":  "{\r\n    \"oldMachineNfcUid\":  \"{{deviceNfcUid}}\",\r\n    \"newMachineNfcUid\":  \"{{replacementDeviceNfcUid}}\",\r\n    \"reason\":  \"Machine unavailable\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3366,7 +3488,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"targetStatus\": \"PENDING\",\n  \"reason\": \"Supervisor correction\"\n}",
+                                                                   "raw":  "{\r\n    \"targetStatus\":  \"PENDING\",\r\n    \"reason\":  \"Supervisor correction\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3405,7 +3527,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"actualStationId\": \"{{stationId}}\",\n  \"reason\": \"Approved station override\"\n}",
+                                                                   "raw":  "{\r\n    \"actualStationId\":  \"{{stationId}}\",\r\n    \"reason\":  \"Approved station override\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3496,7 +3618,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"machineNfcUids\": [\n    \"{{deviceNfcUid}}\"\n  ]\n}",
+                                                                   "raw":  "{\r\n    \"machineNfcUids\":  [\r\n                           \"{{deviceNfcUid}}\"\r\n                       ]\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3540,7 +3662,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"outcome\": \"PARTIAL_REJECT\",\n  \"inspectedQuantity\": 100,\n  \"goodQuantity\": 98,\n  \"rejectedQuantity\": 2,\n  \"reason\": \"Two damaged pieces; rework tracked separately\"\n}",
+                                                                   "raw":  "{\r\n    \"outcome\":  \"PARTIAL_REJECT\",\r\n    \"inspectedQuantity\":  100,\r\n    \"goodQuantity\":  98,\r\n    \"rejectedQuantity\":  2,\r\n    \"reason\":  \"Two damaged pieces; rework tracked separately\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3605,7 +3727,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"passedQuantity\": 98,\n  \"rejectedQuantity\": 2,\n  \"remarks\": \"Two rejected pieces; rework tracked separately\"\n}",
+                                                                   "raw":  "{\r\n    \"passedQuantity\":  98,\r\n    \"rejectedQuantity\":  2,\r\n    \"remarks\":  \"Two rejected pieces; rework tracked separately\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3835,7 +3957,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"stationId\": \"{{stationId}}\",\n  \"code\": \"PICKUP-{{$timestamp}}\",\n  \"locationType\": \"PICKUP\"\n}",
+                                                                   "raw":  "{\r\n    \"stationId\":  \"{{stationId}}\",\r\n    \"code\":  \"PICKUP-{{$timestamp}}\",\r\n    \"locationType\":  \"PICKUP\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -3922,7 +4044,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"lotId\": \"{{lotId}}\",\n  \"trolleyId\": \"{{trolleyId}}\",\n  \"sourceLocationId\": \"{{sourceLocationId}}\",\n  \"destinationLocationId\": \"{{destinationLocationId}}\",\n  \"priority\": 0\n}",
+                                                                   "raw":  "{\r\n    \"lotId\":  \"{{lotId}}\",\r\n    \"trolleyId\":  \"{{trolleyId}}\",\r\n    \"sourceLocationId\":  \"{{sourceLocationId}}\",\r\n    \"destinationLocationId\":  \"{{destinationLocationId}}\",\r\n    \"priority\":  0\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -4010,7 +4132,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"reason\": \"Administrative request\"\n}",
+                                                                   "raw":  "{\r\n    \"reason\":  \"Administrative request\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -4075,7 +4197,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"reason\": \"Administrative request\"\n}",
+                                                                   "raw":  "{\r\n    \"reason\":  \"Administrative request\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -4140,7 +4262,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"eventId\": \"EVENT-{{$guid}}\",\n  \"status\": \"DELIVERED\",\n  \"detail\": {}\n}",
+                                                                   "raw":  "{\r\n    \"eventId\":  \"EVENT-{{$guid}}\",\r\n    \"status\":  \"DELIVERED\",\r\n    \"detail\":  {\r\n\r\n               }\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -4239,7 +4361,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\n  \"deviceId\": \"pad-01\",\n  \"events\": [\n    {\n      \"id\": \"{{$guid}}\",\n      \"aggregateType\": \"PROCESS_EXECUTION\",\n      \"aggregateId\": \"{{executionId}}\",\n      \"eventType\": \"PROCESS_COMPLETE\",\n      \"reason\": null,\n      \"occurredAt\": \"{{$isoTimestamp}}\"\n    }\n  ]\n}",
+                                                                   "raw":  "{\r\n    \"deviceId\":  \"pad-01\",\r\n    \"events\":  [\r\n                   {\r\n                       \"id\":  \"{{$guid}}\",\r\n                       \"aggregateType\":  \"PROCESS_EXECUTION\",\r\n                       \"aggregateId\":  \"{{executionId}}\",\r\n                       \"eventType\":  \"PROCESS_COMPLETE\",\r\n                       \"reason\":  null,\r\n                       \"occurredAt\":  \"{{$isoTimestamp}}\"\r\n                   }\r\n               ]\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"

@@ -43,12 +43,19 @@ public class AccessPolicy {
     public void station(UUID station) { station(actor(),station,false); }
     public void station(UUID actor,UUID station,boolean operating) {
         if(global(actor)) return;
-        Integer count=jdbc.queryForObject("select count(*) from user_station_assignments where user_id=? and station_id=?"+(operating?" and active_on_shift":""),Integer.class,actor,station);
+        Integer count=jdbc.queryForObject("select count(*) from user_process_assignments upa join processes p on p.id=upa.process_id join stations s on s.id=p.station_id where upa.user_id=? and p.station_id=? and p.active and s.active"+(operating?" and upa.active_on_shift":""),Integer.class,actor,station);
         if(count==null||count==0) throw new AccessDeniedException("Station is outside the user's assignments");
     }
     public void process(UUID actor,UUID process) {
+        readProcess(actor,process);
+        if(global(actor)) return;
+        Integer count=jdbc.queryForObject("select count(*) from user_process_assignments where user_id=? and process_id=? and active_on_shift",Integer.class,actor,process);
+        if(count==null||count==0) throw new AccessDeniedException("User is not on shift for this process");
+    }
+    public void readProcess(UUID process){readProcess(actor(),process);}
+    public void readProcess(UUID actor,UUID process) {
         UUID station=jdbc.queryForObject("select station_id from processes where id=?",UUID.class,process);
-        station(actor,station,true);
+        station(actor,station,false);
         if(global(actor)) return;
         Integer count=jdbc.queryForObject("select count(*) from user_process_assignments where user_id=? and process_id=?",Integer.class,actor,process);
         if(count==null||count==0) throw new AccessDeniedException("Process is outside the user's assignments");
@@ -58,10 +65,10 @@ public class AccessPolicy {
         process(actor,process);
     }
     public String stationPredicate(String column) {
-        return global()?"true":column+" in (select station_id from user_station_assignments where user_id='"+actor()+"'::uuid)";
+        return global()?"true":column+" in (select p.station_id from user_process_assignments upa join processes p on p.id=upa.process_id join stations s on s.id=p.station_id where p.active and s.active and upa.user_id='"+actor()+"'::uuid)";
     }
     public String processPredicate(String column) {
-        return global()?"true":column+" in (select process_id from user_process_assignments where user_id='"+actor()+"'::uuid)";
+        return global()?"true":column+" in (select upa.process_id from user_process_assignments upa join processes p on p.id=upa.process_id join stations s on s.id=p.station_id where p.active and s.active and upa.user_id='"+actor()+"'::uuid)";
     }
     public String lotPredicate(String column) {
         return global()?"true":"exists(select 1 from station_visits scope_sv where scope_sv.lot_id="+column+" and "+stationPredicate("scope_sv.station_id")+")";

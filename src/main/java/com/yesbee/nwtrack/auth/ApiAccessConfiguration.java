@@ -24,8 +24,8 @@ public class ApiAccessConfiguration implements WebMvcConfigurer {
                     UUID id=null;try{id=UUID.fromString(parts[index]);}catch(IllegalArgumentException ignored){}
                     if(id!=null) switch(resource) {
                         case "stations" -> access.station(id);
-                        case "processes" -> access.station(jdbc.queryForObject("select station_id from processes where id=?",UUID.class,id));
-                        case "machines" -> access.station(jdbc.queryForObject("select station_id from machines where id=?",UUID.class,id));
+                        case "processes" -> access.readProcess(id);
+                        case "machines" -> access.readProcess(jdbc.queryForObject("select process_id from machines where id=?",UUID.class,id));
                         case "storage-areas" -> access.station(jdbc.queryForObject("select station_id from storage_areas where id=?",UUID.class,id));
                         case "storage-units","storage-locations" -> access.station(jdbc.queryForObject("select station_id from storage_locations where id=?",UUID.class,id));
                         case "station-visits" -> access.station(jdbc.queryForObject("select station_id from station_visits where id=?",UUID.class,id));

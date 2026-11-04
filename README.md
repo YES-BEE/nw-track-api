@@ -4,6 +4,8 @@ Spring Boot modular-monolith implementation of the consolidated NW Track backend
 
 Client developers should start with [docs/API_INTEGRATION_GUIDE.md](docs/API_INTEGRATION_GUIDE.md) for Android operator, admin portal, supervisor, and display-screen integration.
 
+For the existing configuration HTML, use the [screen, field and button integration map](docs/UI_CLICK_DUMMY_INTEGRATION.md).
+
 ## Included
 
 - Spring Boot 4.1 / Java 25 Maven build.
@@ -126,7 +128,7 @@ Use the returned JWT as `Authorization: Bearer <token>`.
 - Back up the named PostgreSQL volume/database externally to meet the selected five-minute RPO; a single physical server alone cannot provide that RPO after server loss.
 ## Frontend integration handoff
 
-Import the collection and LAN environment from [docs/postman](docs/postman/README.md). It includes 131 requests in 18 use-case folders. The [v8 field and access design](docs/CONFIGURATION_V8_DESIGN.md) documents the seven fixed roles, multiple assignments, NFC modes and final QC behavior.
+Import the collection and LAN environment from [docs/postman](docs/postman/README.md). It includes 135 requests in 18 use-case folders. The [v8 field and access design](docs/CONFIGURATION_V8_DESIGN.md) documents the seven fixed roles, process-only assignments, NFC modes and final QC behavior.
 
 ## API documentation
 

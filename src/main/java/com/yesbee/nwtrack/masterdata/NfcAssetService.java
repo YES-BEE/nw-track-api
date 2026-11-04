@@ -36,7 +36,7 @@ public class NfcAssetService {
         String type=normalizeType(assetType);verifyAsset(type,assetId);
         verifyAreaTag(type,assetId,tagId);
         Map<String,Object> old=jdbc.queryForMap("select * from nfc_tags where id=? for update",tagId);
-        if(!Boolean.TRUE.equals(old.get("enabled")))throw new BusinessRuleException("NFC_DISABLED","Tag is disabled");
+        if(!"ACTIVE".equals(old.get("status")))throw new BusinessRuleException("NFC_DISABLED","Only ACTIVE tags can be assigned");
         UUID oldAsset=assetId(old);String oldType=Objects.toString(old.get("asset_type"),null);
         jdbc.update("update nfc_assignment_history set unassigned_at=now(),unassigned_by=?,reason=coalesce(?,reason) where nfc_tag_id=? and unassigned_at is null",actor,reason,tagId);
         jdbc.update("update nfc_tags set asset_type=?,trolley_id=case when ?='TROLLEY' then ?::uuid end,station_id=case when ?='STATION' then ?::uuid end,process_id=case when ?='PROCESS' then ?::uuid end,machine_id=case when ?='MACHINE' then ?::uuid end,storage_area_id=case when ?='STORAGE_AREA' then ?::uuid end,storage_location_id=case when ?='STORAGE_UNIT' then ?::uuid end,active=true,version=version+1 where id=?",type,type,assetId,type,assetId,type,assetId,type,assetId,type,assetId,type,assetId,tagId);
@@ -54,6 +54,13 @@ public class NfcAssetService {
         jdbc.queryForObject("select id from nfc_tags where id=? for update",UUID.class,tagId);
         deactivate(tagId,actor,reason);
         jdbc.update("update nfc_tags set asset_type=null,trolley_id=null,station_id=null,process_id=null,machine_id=null,storage_area_id=null,storage_location_id=null where id=?",tagId);
+    }
+
+    @Transactional public void lifecycle(UUID tagId,String status){
+        if(!Set.of("ACTIVE","DELETED").contains(status))throw new IllegalArgumentException("Supported tag statuses are ACTIVE and DELETED");
+        Map<String,Object> tag=jdbc.queryForMap("select active,status from nfc_tags where id=? for update",tagId);
+        if("DELETED".equals(status)&&Boolean.TRUE.equals(tag.get("active")))throw new BusinessRuleException("NFC_STILL_ASSIGNED","Unassign the tag before deleting it");
+        jdbc.update("update nfc_tags set status=?,version=version+1 where id=?",status,tagId);
     }
 
     private void history(UUID tag,String type,UUID asset,UUID actor,String reason){jdbc.update("insert into nfc_assignment_history(nfc_tag_id,asset_type,asset_id,assigned_by,reason) values (?,?,?,?,?)",tag,type,asset,actor,reason);}

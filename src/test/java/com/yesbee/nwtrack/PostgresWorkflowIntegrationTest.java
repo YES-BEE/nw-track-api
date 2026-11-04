@@ -30,6 +30,7 @@ class PostgresWorkflowIntegrationTest {
     @Autowired JdbcTemplate jdbc; @Autowired ProductionService production; @Autowired OperationsService operations; @Autowired PlacementService placements; @Autowired QcService qc; @Autowired NfcAssetService nfc; @Autowired ProcessMachineService machines; @Autowired StyleRevisionService revisions;
     @org.springframework.boot.test.web.server.LocalServerPort int port;
     @Autowired com.fasterxml.jackson.databind.ObjectMapper json;
+    @Autowired com.yesbee.nwtrack.notification.NotificationService notifications;
     private record Reply(int status,com.fasterxml.jackson.databind.JsonNode body){}
     private Reply call(String method,String path,Object body,String token)throws Exception{
         var builder=java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:"+port+path)).header("Content-Type","application/json");
@@ -69,10 +70,11 @@ class PostgresWorkflowIntegrationTest {
         payload.put("code","DUP-"+suffix);
         assertThat(call("POST","/api/v1/processes",payload,admin).status()).isEqualTo(409);
         String otherStation=UUID.randomUUID().toString();jdbc.update("insert into stations(id,code,name) values (?::uuid,?,?)",otherStation,"OTHER-"+suffix,"Other");
-        var assignments=java.util.Map.of("stations",List.of(java.util.Map.of("stationId",station,"activeOnShift",true),java.util.Map.of("stationId",otherStation,"activeOnShift",true)),"processIds",List.of(processId));
+        UUID otherProcess=UUID.randomUUID();jdbc.update("insert into processes(id,code,name,station_id) values (?,?,?,?::uuid)",otherProcess,"OTHER-P-"+suffix,"Other process",otherStation);
+        var assignments=List.of(java.util.Map.of("processId",processId,"activeOnShift",true),java.util.Map.of("processId",otherProcess.toString(),"activeOnShift",true));
         String username="pm-"+suffix;
-        Reply user=call("POST","/api/v1/users",java.util.Map.of("username",username,"displayName","Process manager","initialPassword","ChangeMe123!","role","PROCESS_MANAGER","assignments",assignments),admin);
-        assertThat(user.status()).as(user.body().toString()).isEqualTo(200);assertThat(user.body().get("stations").size()).isEqualTo(2);
+        Reply user=call("POST","/api/v1/users",java.util.Map.of("username",username,"displayName","Process manager","initialPassword","ChangeMe123!","role","PROCESS_MANAGER","processAssignments",assignments),admin);
+        assertThat(user.status()).as(user.body().toString()).isEqualTo(200);assertThat(user.body().get("processAssignments").size()).isEqualTo(2);
         String pm=login(username,"PAD");
         Reply own=call("GET","/api/v1/stations",null,pm);assertThat(own.status()).isEqualTo(200);assertThat(own.body().size()).isEqualTo(2);
         assertThat(call("GET","/api/v1/users",null,pm).status()).isEqualTo(403);
@@ -89,7 +91,7 @@ class PostgresWorkflowIntegrationTest {
         assertThat(call("GET","/api/v1/dashboard",null,pm).status()).isEqualTo(403);
         assertThat(call("PUT","/api/v1/access-roles/PROCESS_MANAGER",java.util.Map.of("pcAccess",true,"padAccess",true,"permissions",permissions),admin).status()).isEqualTo(200);
         assertThat(call("GET","/api/v1/dashboard",null,pm).status()).isEqualTo(200);
-        assertThat(call("GET","/api/v1/sync/bootstrap",null,pm).body().get("assignments").size()).isEqualTo(2);
+        assertThat(call("GET","/api/v1/sync/bootstrap",null,pm).body().get("processAssignments").size()).isEqualTo(2);
         assertThat(call("GET","/api/v1/sync/changes?since=2020-01-01T00:00:00Z",null,pm).status()).isEqualTo(200);
         assertThat(call("POST","/api/v1/nfc/resolve",java.util.Map.of("uid",deviceUid),pm).status()).isEqualTo(403);
         assertThat(call("POST","/api/v1/users",java.util.Map.of("username","top-"+suffix,"displayName","Top manager","initialPassword","ChangeMe123!","role","TOP_MANAGER"),admin).status()).isEqualTo(200);
@@ -164,6 +166,88 @@ class PostgresWorkflowIntegrationTest {
         Reply done=call("POST","/api/v1/sync/events",batch,admin);assertThat(done.status()).as(done.body().toString()).isEqualTo(200);assertThat(done.body().get(0).get("outcome").asText()).isEqualTo("APPLIED");
         assertThat(jdbc.queryForObject("select status from lots where id=?",String.class,lot)).isEqualTo("COMPLETED");
         assertThat(jdbc.queryForObject("select count(*) from process_state_events where process_execution_id=?",Integer.class,execution)).isEqualTo(2);
+    }
+
+    @Test void mockOnlyCrudUsesProcessAssignmentsAndIndependentTagLifecycle()throws Exception{
+        String admin=login("admin","PC"),suffix=UUID.randomUUID().toString().substring(0,8);
+        String[] uids={"MOCK-P-"+suffix,"MOCK-D1-"+suffix,"MOCK-D2-"+suffix,"MOCK-S-"+suffix};
+        List<String> tags=new java.util.ArrayList<>();
+        for(String uid:uids){
+            Reply tag=call("POST","/api/v1/nfc-tags",java.util.Map.of("tagName","Mock "+uid,"tagId",uid),admin);
+            assertThat(tag.status()).as(tag.body().toString()).isEqualTo(200);
+            assertThat(tag.body().get("status").asText()).isEqualTo("ACTIVE");assertThat(tag.body().get("assigned").asBoolean()).isFalse();tags.add(tag.body().get("id").asText());
+        }
+        var processBody=new java.util.LinkedHashMap<String,Object>();processBody.put("name","Mock process "+suffix);processBody.put("description","Mock description");processBody.put("stationNumber","MOCK-"+suffix);processBody.put("mode","process");processBody.put("processTag",uids[0]);processBody.put("deviceCount",0);
+        Reply process=call("POST","/api/v1/processes",processBody,admin);assertThat(process.status()).as(process.body().toString()).isEqualTo(200);
+        String processId=process.body().get("id").asText(),code=process.body().get("code").asText(),oldStation=process.body().get("station_id").asText();assertThat(code).startsWith("P-");
+        String username="mock-user-"+suffix;
+        Reply user=call("POST","/api/v1/users",java.util.Map.of("username",username,"displayName","Mock user","initialPassword","ChangeMe123!","role","PROCESS_MANAGER","processAssignments",List.of(java.util.Map.of("processId",processId,"activeOnShift",true))),admin);
+        assertThat(user.status()).as(user.body().toString()).isEqualTo(200);String userId=user.body().get("id").asText();
+        assertThat(user.body().has("stations")).isFalse();
+        Reply token=call("POST","/api/v1/auth/login",java.util.Map.of("username",username,"password","ChangeMe123!","clientType","PAD"),null);assertThat(token.status()).isEqualTo(200);
+        assertThat(token.body().get("processAssignments").get(0).get("stationId").asText()).isEqualTo(oldStation);String pm=token.body().get("accessToken").asText();
+        processBody.put("stationNumber","MOVED-"+suffix);processBody.put("name","Edited mock process");
+        Reply moved=call("PUT","/api/v1/processes/"+processId,processBody,admin);assertThat(moved.status()).as(moved.body().toString()).isEqualTo(200);
+        assertThat(moved.body().get("code").asText()).isEqualTo(code);String station=moved.body().get("station_id").asText();assertThat(station).isNotEqualTo(oldStation);
+        Reply me=call("GET","/api/v1/auth/me",null,pm);assertThat(me.body().get("processAssignments").get(0).get("stationNumber").asText()).isEqualTo("MOVED-"+suffix);
+        assertThat(call("GET","/api/v1/stations/"+oldStation,null,pm).status()).isEqualTo(403);
+        var devices=List.of(java.util.Map.of("name","Device 1","tag",uids[1]),java.util.Map.of("name","Device 2","description","Second device","tag",uids[2]));
+        var deviceBody=new java.util.LinkedHashMap<String,Object>();deviceBody.put("name","Mock devices");deviceBody.put("stationNumber","moved-"+suffix);deviceBody.put("mode","devices");deviceBody.put("deviceCount",3);deviceBody.put("devices",devices);
+        assertThat(call("POST","/api/v1/processes",deviceBody,admin).status()).isEqualTo(400);
+        deviceBody.put("deviceCount",2);Reply deviceProcess=call("POST","/api/v1/processes",deviceBody,admin);assertThat(deviceProcess.status()).as(deviceProcess.body().toString()).isEqualTo(200);
+        assertThat(deviceProcess.body().get("deviceCount").asInt()).isEqualTo(2);assertThat(deviceProcess.body().get("station_id").asText()).isEqualTo(station);assertThat(deviceProcess.body().get("devices").get(0).get("type").asText()).isEqualTo("GENERAL");
+        String deviceProcessId=deviceProcess.body().get("id").asText();
+        var assigned=List.of(java.util.Map.of("processId",processId,"activeOnShift",true),java.util.Map.of("processId",deviceProcessId,"activeOnShift",false));
+        assertThat(call("PUT","/api/v1/users/"+userId+"/assignments",java.util.Map.of("processAssignments",assigned),admin).status()).isEqualTo(200);
+        assertThat(call("POST","/api/v1/nfc/resolve",java.util.Map.of("uid",uids[1]),pm).status()).isEqualTo(403);
+        assigned=List.of(java.util.Map.of("processId",processId,"activeOnShift",true),java.util.Map.of("processId",deviceProcessId,"activeOnShift",true));
+        assertThat(call("PUT","/api/v1/users/"+userId+"/assignments",java.util.Map.of("processAssignments",assigned),admin).status()).isEqualTo(200);
+        Reply scan=call("POST","/api/v1/nfc/resolve",java.util.Map.of("uid",uids[1]),pm);assertThat(scan.status()).as(scan.body().toString()).isEqualTo(200);assertThat(scan.body().get("processId").asText()).isEqualTo(deviceProcessId);assertThat(scan.body().get("stationId").asText()).isEqualTo(station);
+        assertThat(scan.body().get("processAssignments").size()).isEqualTo(1);
+        notifications.stationEvent(UUID.fromString(station),"PROCESS_ASSIGNMENT_TEST",java.util.Map.of("stationId",station));
+        assertThat(jdbc.queryForObject("select count(*) from notifications where recipient_user_id=?::uuid and event_type='PROCESS_ASSIGNMENT_TEST'",Integer.class,userId)).isEqualTo(1);
+        assertThat(call("DELETE","/api/v1/nfc-tags/"+tags.get(1),null,admin).status()).isEqualTo(409);
+        var areaBody=new java.util.LinkedHashMap<String,Object>();areaBody.put("storageNumber","MOCK-STORE-"+suffix);areaBody.put("description","Mock storage");areaBody.put("stationNumber","MOVED-"+suffix);areaBody.put("nfcUid",uids[3]);
+        Reply area=call("POST","/api/v1/storage-areas",areaBody,admin);assertThat(area.status()).as(area.body().toString()).isEqualTo(200);assertThat(area.body().get("name").asText()).isEqualTo("MOCK-STORE-"+suffix);assertThat(area.body().get("station_id").asText()).isEqualTo(station);
+        String areaId=area.body().get("id").asText();areaBody.put("description","Updated storage");areaBody.remove("nfcUid");areaBody.put("tagId",tags.get(3));
+        assertThat(call("PUT","/api/v1/storage-areas/"+areaId,areaBody,admin).status()).isEqualTo(200);
+        assertThat(call("DELETE","/api/v1/storage-areas/"+areaId,null,admin).status()).isEqualTo(200);
+        Reply unassigned=call("GET","/api/v1/nfc-tags/"+tags.get(3),null,admin);assertThat(unassigned.body().get("status").asText()).isEqualTo("ACTIVE");assertThat(unassigned.body().get("assigned").asBoolean()).isFalse();
+        assertThat(call("DELETE","/api/v1/nfc-tags/"+tags.get(3),null,admin).body().get("status").asText()).isEqualTo("DELETED");
+        assertThat(call("POST","/api/v1/processes",java.util.Map.of("name","Deleted tag rejected","stationNumber","ORPHAN-"+suffix,"nfcMode","PROCESS","nfcUid",uids[3]),admin).status()).isEqualTo(404);
+        assertThat(jdbc.queryForObject("select count(*) from stations where code=?",Integer.class,"ORPHAN-"+suffix)).isZero();
+        assertThat(call("GET","/api/v1/nfc-tags/statuses",null,admin).body().size()).isEqualTo(2);
+        Reply available=call("GET","/api/v1/nfc-tags?status=ACTIVE&assigned=false",null,admin);for(var tag:available.body())assertThat(tag.get("id").asText()).isNotEqualTo(tags.get(3));
+        assertThat(call("PATCH","/api/v1/nfc-tags/"+tags.get(3)+"/status",java.util.Map.of("status","ACTIVE"),admin).body().get("status").asText()).isEqualTo("ACTIVE");
+        String deviceId=deviceProcess.body().get("devices").get(0).get("id").asText();
+        assertThat(call("PUT","/api/v1/machines/"+deviceId,java.util.Map.of("processId",deviceProcessId,"name","Device renamed","nfcUid",uids[1]),admin).status()).isEqualTo(200);
+        assertThat(call("DELETE","/api/v1/machines/"+deviceId,null,admin).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/processes/"+deviceProcessId,null,admin).body().get("deviceCount").asInt()).isEqualTo(1);
+        assertThat(call("DELETE","/api/v1/processes/"+deviceProcessId,null,admin).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/nfc-tags/"+tags.get(2),null,admin).body().get("assigned").asBoolean()).isFalse();
+        assertThat(call("PUT","/api/v1/users/"+userId,java.util.Map.of("username",username,"displayName","Edited user","role","PROCESS_MANAGER","processAssignments",List.of(java.util.Map.of("processId",processId,"activeOnShift",true))),admin).status()).isEqualTo(200);
+        assertThat(call("DELETE","/api/v1/users/"+userId,null,admin).body().get("enabled").asBoolean()).isFalse();
+        assertThat(call("GET","/api/v1/auth/me",null,pm).status()).isEqualTo(403);
+        assertThat(jdbc.queryForObject("select to_regclass('public.user_station_assignments') is null",Boolean.class)).isTrue();
+    }
+
+    @Test void v5MigratesProcessShiftFlagsAndTagLifecycleWithoutStationAssignments(){
+        String schema="assignment_"+UUID.randomUUID().toString().replace("-","");
+        org.flywaydb.core.Flyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()).schemas(schema).defaultSchema(schema).target("4").load().migrate();
+        var ds=new org.springframework.jdbc.datasource.DriverManagerDataSource(postgres.getJdbcUrl()+"&currentSchema="+schema,postgres.getUsername(),postgres.getPassword());JdbcTemplate old=new JdbcTemplate(ds);
+        UUID user=UUID.randomUUID(),stationA=UUID.randomUUID(),stationB=UUID.randomUUID(),p1=UUID.randomUUID(),p2=UUID.randomUUID(),p3=UUID.randomUUID();
+        old.update("insert into users(id,username,display_name,password_hash) values (?,'shift-user','Shift user','test')",user);
+        old.update("insert into stations(id,code,name) values (?,'A','A'),(?,'B','B')",stationA,stationB);
+        old.update("insert into processes(id,code,name,station_id) values (?,'P1','P1',?),(?,'P2','P2',?),(?,'P3','P3',?)",p1,stationA,p2,stationA,p3,stationB);
+        old.update("insert into user_station_assignments(user_id,station_id,active_on_shift) values (?,?,true),(?,?,false)",user,stationA,user,stationB);
+        for(UUID process:List.of(p1,p2,p3))old.update("insert into user_process_assignments(user_id,process_id) values (?,?)",user,process);
+        old.update("insert into nfc_tags(id,uid,name,active,enabled) values (?,'ACTIVE-UID','Active tag',false,true),(?,'DELETED-UID','Deleted tag',false,false)",UUID.randomUUID(),UUID.randomUUID());
+        org.flywaydb.core.Flyway.configure().dataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword()).schemas(schema).defaultSchema(schema).load().migrate();
+        assertThat(old.queryForObject("select count(*) from user_process_assignments where active_on_shift",Integer.class)).isEqualTo(2);
+        assertThat(old.queryForObject("select active_on_shift from user_process_assignments where process_id=?",Boolean.class,p3)).isFalse();
+        assertThat(old.queryForObject("select to_regclass(?) is null",Boolean.class,schema+".user_station_assignments")).isTrue();
+        assertThat(old.queryForObject("select status from nfc_tags where uid='ACTIVE-UID'",String.class)).isEqualTo("ACTIVE");
+        assertThat(old.queryForObject("select status from nfc_tags where uid='DELETED-UID'",String.class)).isEqualTo("DELETED");
     }
 
     @Test void upgradesLegacyRolesAndKeepsHistoricalReferences(){
