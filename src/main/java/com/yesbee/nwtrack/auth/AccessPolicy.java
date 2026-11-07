@@ -20,10 +20,11 @@ public class AccessPolicy {
     public boolean global() { return global(actor()); }
     public void channel(String username,String channel) {
         if (!Set.of("PC","PAD").contains(channel)) throw new IllegalArgumentException("clientType must be PC or PAD");
-        Integer count=jdbc.queryForObject("select count(*) from users u join user_roles ur on ur.user_id=u.id join roles r on r.id=ur.role_id where lower(u.username)=lower(?) and u.enabled and case when ?='PC' then r.pc_access else r.pad_access end",Integer.class,username,channel);
+        Integer count=jdbc.queryForObject("select count(*) from users u join user_roles ur on ur.user_id=u.id join roles r on r.id=ur.role_id where lower(u.username)=lower(?) and u.enabled and r.active and case when ?='PC' then r.pc_access else r.pad_access end",Integer.class,username,channel);
         if (count==null||count==0) throw new AccessDeniedException("Role does not allow this application channel");
     }
     public void require(String permission) {
+        session();
         Jwt jwt=token();
         String client=Objects.requireNonNullElse(jwt.getClaimAsString("clientType"),"PC");
         channel(jwt.getSubject(),client);
@@ -32,6 +33,45 @@ public class AccessPolicy {
         if(!channelAllows(role(),client,permission))throw new AccessDeniedException("This action is available on the NW Pad application only");
         Integer count=jdbc.queryForObject("select count(*) from role_permissions rp join user_roles ur on ur.role_id=rp.role_id where ur.user_id=? and rp.permission=?",Integer.class,actor(),permission);
         if(count==null||count==0) throw new AccessDeniedException("Missing permission: "+permission);
+    }
+    public String clientType(){return Objects.requireNonNullElse(token().getClaimAsString("clientType"),"PC");}
+    public List<Map<String,Object>> modulesForUsername(String username){
+        return jdbc.queryForList("select m.key,m.name,m.built_in from app_modules m join role_modules rm on rm.module_key=m.key join user_roles ur on ur.role_id=rm.role_id join roles r on r.id=ur.role_id join users u on u.id=ur.user_id where lower(u.username)=lower(?) and u.enabled and r.active and m.active order by m.built_in desc,m.key",username);
+    }
+    public String tagPredicate(String alias){
+        if(global())return "true";
+        return "(not "+alias+".active or "+alias+".process_id in(select p.id from processes p where "+processPredicate("p.id")+")"
+            +" or "+alias+".machine_id in(select m.id from machines m where "+processPredicate("m.process_id")+")"
+            +" or "+alias+".station_id in(select s.id from stations s where "+stationPredicate("s.id")+")"
+            +" or "+alias+".storage_area_id in(select sa.id from storage_areas sa where "+stationPredicate("sa.station_id")+")"
+            +" or "+alias+".storage_location_id in(select sl.id from storage_locations sl where "+stationPredicate("sl.station_id")+"))";
+    }
+    public void tag(UUID id){
+        if(jdbc.queryForObject("select count(*) from nfc_tags n where n.id=? and "+tagPredicate("n"),Integer.class,id)==0)throw new AccessDeniedException("Tag is outside the user's assignments");
+    }
+    public void asset(String type,UUID id){
+        switch(type.toUpperCase(Locale.ROOT)){
+            case "PROCESS" -> readProcess(id);
+            case "MACHINE" -> readProcess(jdbc.queryForObject("select process_id from machines where id=?",UUID.class,id));
+            case "STATION" -> station(id);
+            case "STORAGE_AREA" -> station(jdbc.queryForObject("select station_id from storage_areas where id=?",UUID.class,id));
+            case "STORAGE_UNIT" -> station(jdbc.queryForObject("select station_id from storage_locations where id=?",UUID.class,id));
+            default -> {if(!global())throw new AccessDeniedException("Asset requires global access");}
+        }
+    }
+    public void session(){
+        channel(token().getSubject(),clientType());
+        if(token().getClaimAsStringList("roles")==null||!token().getClaimAsStringList("roles").contains(role()))throw new AccessDeniedException("Role changed; log in again");
+    }
+    public boolean ownStylesOnly(){
+        if(role().equals("STYLE_CONFIGURATOR"))return true;
+        return jdbc.queryForObject("select count(*) from role_modules rm join user_roles ur on ur.role_id=rm.role_id where ur.user_id=? and rm.module_key='newstyle'",Integer.class,actor())>0
+            && jdbc.queryForObject("select count(*) from role_modules rm join user_roles ur on ur.role_id=rm.role_id where ur.user_id=? and rm.module_key='styles'",Integer.class,actor())==0;
+    }
+    public String stylePredicate(String alias){
+        if(ownStylesOnly())return alias+".created_by='"+actor()+"'::uuid";
+        if(global())return "true";
+        return "("+alias+".created_by='"+actor()+"'::uuid or exists(select 1 from style_processes scope_sp join processes scope_p on scope_p.id=scope_sp.process_id where scope_sp.style_id="+alias+".id and "+processPredicate("scope_p.id")+"))";
     }
     private boolean channelAllows(String role,String client,String permission){
         return !client.equals("PC")||Set.of("NW","ADMIN_IT").contains(role)||!Set.of("OPERATE","QC","OVERRIDE","TRANSPORT").contains(permission);
@@ -77,7 +117,6 @@ public class AccessPolicy {
         if(jdbc.queryForObject("select count(*) from lots l where l.id=? and "+lotPredicate("l.id"),Integer.class,id)==0) throw new AccessDeniedException("Lot is outside the user's assignments");
     }
     public void style(UUID id) {
-        if(global() || Set.of("NW","ADMIN_IT","PRODUCTION_MANAGER","STATION_0").contains(role())) return;
-        if(jdbc.queryForObject("select count(*) from style_processes sp join processes p on p.id=sp.process_id where sp.style_id=? and "+stationPredicate("p.station_id"),Integer.class,id)==0) throw new AccessDeniedException("Style is outside the user's assignments");
+        if(jdbc.queryForObject("select count(*) from styles s where s.id=? and "+stylePredicate("s"),Integer.class,id)==0)throw new AccessDeniedException("Style is outside the user's access");
     }
 }

@@ -39,7 +39,7 @@ public class UserController {
     @PatchMapping("/{id}/status") @Transactional public Map<String,Object> status(@PathVariable UUID id,@RequestBody StatusRequest r){jdbc.update("update users set enabled=?,updated_at=now() where id=?",r.enabled(),id);if(!r.enabled())revoke(id);return get(id);}
     @PutMapping("/{id}/password") @Transactional public Map<String,Object> resetPassword(@PathVariable UUID id,@Valid @RequestBody PasswordReset r){jdbc.update("update users set password_hash=?,must_change_password=true,updated_at=now() where id=?",passwords.encode(r.temporaryPassword()),id);revoke(id);return get(id);}
     private void revoke(UUID id){jdbc.update("update refresh_tokens set revoked_at=now() where user_id=? and revoked_at is null",id);}
-    private void setRole(UUID id,String role){UUID roleId=jdbc.queryForObject("select id from roles where code=?",UUID.class,role);jdbc.update("delete from user_roles where user_id=?",id);jdbc.update("insert into user_roles values (?,?)",id,roleId);}
+    private void setRole(UUID id,String role){UUID roleId=jdbc.queryForObject("select id from roles where code=? and active for update",UUID.class,role);jdbc.update("delete from user_roles where user_id=?",id);jdbc.update("insert into user_roles values (?,?)",id,roleId);}
     public record CreateUser(@NotBlank String username,@NotBlank String displayName,@NotBlank String initialPassword,@NotBlank String role,List<@Valid Command> processAssignments){}
     public record UpdateUser(@NotBlank String username,@NotBlank String displayName,@NotBlank String role,@NotNull List<@Valid Command> processAssignments){}
     public record RoleCommand(@NotBlank String role){}

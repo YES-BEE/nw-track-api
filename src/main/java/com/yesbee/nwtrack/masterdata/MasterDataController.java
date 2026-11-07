@@ -49,7 +49,7 @@ public class MasterDataController {
 
     @PostMapping("/api/v1/nfc-tags") public Map<String,Object> createTag(@Valid @RequestBody TagCommand r){UUID id=UUID.randomUUID();jdbc.update("insert into nfc_tags(id,uid,name,active) values (?,?,?,false)",id,r.uid().trim().toUpperCase(java.util.Locale.ROOT),r.name().trim());return tag(id);}
     @GetMapping("/api/v1/nfc-tags") public List<Map<String,Object>> tags(@RequestParam(required=false) String status,@RequestParam(required=false) Boolean assigned){
-        String sql=TAG_SELECT+" where 1=1";java.util.List<Object> args=new java.util.ArrayList<>();
+        String sql=TAG_SELECT+" where "+access.tagPredicate("nfc_tags");java.util.List<Object> args=new java.util.ArrayList<>();
         if(status!=null){sql+=" and status=?";args.add(status.toUpperCase(java.util.Locale.ROOT));}
         if(assigned!=null){sql+=" and active=?";args.add(assigned);}
         return jdbc.queryForList(sql+" order by uid",args.toArray());

@@ -33,8 +33,8 @@ public class AssetAdministrationController {
     @PostMapping("/storage-areas/{areaId}/units") @Transactional public Map<String,Object> createUnit(@PathVariable UUID areaId,@Valid @RequestBody UnitCommand r,@AuthenticationPrincipal Jwt jwt){UUID station=jdbc.queryForObject("select station_id from storage_areas where id=? and active",UUID.class,areaId);UUID id=UUID.randomUUID();jdbc.update("insert into storage_locations(id,station_id,storage_area_id,code,name) values (?,?,?,?,?)",id,station,areaId,norm(r.code()),r.name().trim());assignAll(r.nfcUids(),"STORAGE_UNIT",id,actors.id(jwt),"Storage Unit onboarding");return unit(id);}
     @PutMapping("/storage-units/{id}") public Map<String,Object> updateUnit(@PathVariable UUID id,@Valid @RequestBody UnitCommand r){jdbc.update("update storage_locations set code=?,name=?,version=version+1 where id=?",norm(r.code()),r.name().trim(),id);return unit(id);}
 
-    @PostMapping("/nfc-assignments") public Map<String,Object> register(@Valid @RequestBody NfcAssignment r,@AuthenticationPrincipal Jwt jwt){UUID id=nfc.registerAndAssign(r.uid(),r.assetType(),r.assetId(),actors.id(jwt),r.reason());return tag(id);}
-    @PutMapping("/nfc-assignments/{tagId}") public Map<String,Object> reassign(@PathVariable UUID tagId,@Valid @RequestBody NfcReassignment r,@AuthenticationPrincipal Jwt jwt){nfc.assign(tagId,r.assetType(),r.assetId(),actors.id(jwt),r.reason());return tag(tagId);}
+    @PostMapping("/nfc-assignments") public Map<String,Object> register(@Valid @RequestBody NfcAssignment r,@AuthenticationPrincipal Jwt jwt){access.asset(r.assetType(),r.assetId());UUID id=nfc.registerAndAssign(r.uid(),r.assetType(),r.assetId(),actors.id(jwt),r.reason());return tag(id);}
+    @PutMapping("/nfc-assignments/{tagId}") public Map<String,Object> reassign(@PathVariable UUID tagId,@Valid @RequestBody NfcReassignment r,@AuthenticationPrincipal Jwt jwt){access.asset(r.assetType(),r.assetId());nfc.assign(tagId,r.assetType(),r.assetId(),actors.id(jwt),r.reason());return tag(tagId);}
     @DeleteMapping("/nfc-assignments/{tagId}") public void deactivate(@PathVariable UUID tagId,@RequestBody @Valid Reason r,@AuthenticationPrincipal Jwt jwt){nfc.unassign(tagId,actors.id(jwt),r.reason());}
     @GetMapping("/nfc-assignments/{tagId}/history") public List<Map<String,Object>> history(@PathVariable UUID tagId){return jdbc.queryForList("select asset_type,asset_id,assigned_by,assigned_at,unassigned_by,unassigned_at,reason from nfc_assignment_history where nfc_tag_id=? order by assigned_at",tagId);}
 
@@ -59,7 +59,7 @@ public class AssetAdministrationController {
         return configurations.registeredUid(uid,tagId);
     }
     private Map<String,Object> saveMachine(UUID existing,MachineCommand r,UUID actor){
-        UUID station=jdbc.queryForObject("select station_id from processes where id=? and active and nfc_mode='DEVICES'",UUID.class,r.processId());
+        access.readProcess(r.processId());UUID station=jdbc.queryForObject("select station_id from processes where id=? and active and nfc_mode='DEVICES'",UUID.class,r.processId());
         if(r.stationId()!=null&&!station.equals(r.stationId()))throw new IllegalArgumentException("Device station is derived from its owning process");
         UUID id=existing==null?UUID.randomUUID():existing;
         String type=r.type()==null||r.type().isBlank()?(existing==null?"GENERAL":jdbc.queryForObject("select machine_type from machines where id=?",String.class,id)):r.type().trim();

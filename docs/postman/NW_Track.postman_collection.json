@@ -1,7 +1,7 @@
 {
     "info":  {
                  "name":  "NW Track - Manual API requests",
-                 "description":  "135 normal requests in 18 folders. No scripts: open tabs and click Send. Users receive processAssignments with per-process activeOnShift; stations are derived. Configuration accepts mock fields only; deviceCount must match devices. Tags expose ACTIVE/DELETED status separately from assigned. Copy tokens and IDs into environment variables manually. See README.md and ../PROCESS_ASSIGNMENT_V5.md.",
+                 "description":  "142 normal requests in 19 folders. No scripts. v21 supports independent module grants, custom roles, custom module placeholders and STYLE_CONFIGURATOR create/view-own. Use modules from login or auth/me for the sidebar. Copy returned roleCode, moduleKey, tokens and UUIDs manually. See ../ROLE_MODULES_V21.md and ../UI_V21_API_INTEGRATION.md.",
                  "schema":  "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
              },
     "auth":  {
@@ -360,7 +360,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\r\n    \"pcAccess\":  true,\r\n    \"padAccess\":  true,\r\n    \"permissions\":  [\r\n                        \"READ\",\r\n                        \"REPORTS\",\r\n                        \"OPERATE\",\r\n                        \"QC\",\r\n                        \"TRANSPORT\"\r\n                    ]\r\n}",
+                                                                   "raw":  "{\"modules\":[\"dashboard\",\"reports\",\"process\",\"storage\",\"tags\",\"styles\"],\"pcAccess\":true,\"padAccess\":true}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2545,7 +2545,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\r\n    \"styleNumber\":  \"STYLE-{{$timestamp}}\",\r\n    \"description\":  \"Sample production style\"\r\n}",
+                                                                   "raw":  "{\"styleNumber\":\"STYLE-{{$timestamp}}\",\"description\":\"Sample production style\",\"processIds\":[\"{{processId}}\",\"{{qualityProcessId}}\"]}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -4458,6 +4458,203 @@
                                                       "auth":  {
                                                                    "type":  "noauth"
                                                                }
+                                                  }
+                                  }
+                              ]
+                 },
+                 {
+                     "name":  "19 v21 Roles modules and form lookups",
+                     "item":  [
+                                  {
+                                      "name":  "POST /api/v1/access-roles",
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     },
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{baseUrl}}/api/v1/access-roles",
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "api",
+                                                                               "v1",
+                                                                               "access-roles"
+                                                                           ]
+                                                              },
+                                                      "body":  {
+                                                                   "raw":  "{\r\n    \"modules\":  [\r\n                    \"dashboard\",\r\n                    \"process\"\r\n                ],\r\n    \"pcAccess\":  true,\r\n    \"name\":  \"Line Manager\",\r\n    \"padAccess\":  false\r\n}",
+                                                                   "options":  {
+                                                                                   "raw":  {
+                                                                                               "language":  "json"
+                                                                                           }
+                                                                               },
+                                                                   "mode":  "raw"
+                                                               }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "DELETE /api/v1/access-roles/{{roleCode}}",
+                                      "request":  {
+                                                      "method":  "DELETE",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{baseUrl}}/api/v1/access-roles/{{roleCode}}",
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "api",
+                                                                               "v1",
+                                                                               "access-roles",
+                                                                               "{{roleCode}}"
+                                                                           ]
+                                                              }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "GET /api/v1/access-roles/options",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{baseUrl}}/api/v1/access-roles/options",
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "api",
+                                                                               "v1",
+                                                                               "access-roles",
+                                                                               "options"
+                                                                           ]
+                                                              }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "GET /api/v1/modules",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{baseUrl}}/api/v1/modules",
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "api",
+                                                                               "v1",
+                                                                               "modules"
+                                                                           ]
+                                                              }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "POST /api/v1/modules",
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     },
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{baseUrl}}/api/v1/modules",
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "api",
+                                                                               "v1",
+                                                                               "modules"
+                                                                           ]
+                                                              },
+                                                      "body":  {
+                                                                   "raw":  "{\r\n    \"name\":  \"Maintenance\"\r\n}",
+                                                                   "options":  {
+                                                                                   "raw":  {
+                                                                                               "language":  "json"
+                                                                                           }
+                                                                               },
+                                                                   "mode":  "raw"
+                                                               }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "GET /api/v1/modules/{{moduleKey}}/content",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{baseUrl}}/api/v1/modules/{{moduleKey}}/content",
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "api",
+                                                                               "v1",
+                                                                               "modules",
+                                                                               "{{moduleKey}}",
+                                                                               "content"
+                                                                           ]
+                                                              }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "GET /api/v1/ui/lookups",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{baseUrl}}/api/v1/ui/lookups",
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "api",
+                                                                               "v1",
+                                                                               "ui",
+                                                                               "lookups"
+                                                                           ]
+                                                              }
                                                   }
                                   }
                               ]

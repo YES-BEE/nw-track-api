@@ -9,14 +9,14 @@ import java.util.*;
 
 @Configuration
 public class ApiAccessConfiguration implements WebMvcConfigurer {
-    private final AccessPolicy access; private final JdbcTemplate jdbc;
-    public ApiAccessConfiguration(AccessPolicy access,JdbcTemplate jdbc){this.access=access;this.jdbc=jdbc;}
+    private final AccessPolicy access; private final JdbcTemplate jdbc;private final ModuleAccessService modules;
+    public ApiAccessConfiguration(AccessPolicy access,JdbcTemplate jdbc,ModuleAccessService modules){this.access=access;this.jdbc=jdbc;this.modules=modules;}
     @Override public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new HandlerInterceptor(){
             @Override public boolean preHandle(HttpServletRequest request,HttpServletResponse response,Object handler) {
                 String path=org.springframework.web.util.UrlPathHelper.defaultInstance.getLookupPathForRequest(request);
                 if(path.equals("/api/v1/auth/login")||path.equals("/api/v1/auth/refresh")) return true;
-                access.require(permission(path,request.getMethod()));
+                modules.authorize(path,request.getMethod());
                 String[] parts=path.substring("/api/v1/".length()).split("/");
                 int index=parts[0].equals("displays")?2:1;
                 String resource=parts[0].equals("displays")&&parts.length>1?parts[1]:parts[0];
@@ -32,6 +32,7 @@ public class ApiAccessConfiguration implements WebMvcConfigurer {
                         case "process-executions" -> access.execution(access.actor(),id);
                         case "lots" -> access.lot(id);
                         case "styles" -> access.style(id);
+                        case "nfc-tags","nfc-assignments" -> access.tag(id);
                         case "transport-requests" -> access.lot(jdbc.queryForObject("select lot_id from transport_requests where id=?",UUID.class,id));
                     }
                 }
@@ -44,6 +45,7 @@ public class ApiAccessConfiguration implements WebMvcConfigurer {
         boolean read=method.equals("GET");
         if(path.startsWith("/api/v1/auth/")||path.startsWith("/api/v1/notifications")||path.equals("/api/v1/factory-config")) return "READ";
         if(path.startsWith("/api/v1/access-roles"))return "ROLES";
+        if(path.equals("/api/v1/modules"))return "ROLES";
         if(path.startsWith("/api/v1/users"))return "USERS";
         if(path.startsWith("/api/v1/nfc-tags")||path.startsWith("/api/v1/nfc-assignments"))return "CONFIGURE";
         if(path.contains("/provider-events"))return "CONFIGURE";

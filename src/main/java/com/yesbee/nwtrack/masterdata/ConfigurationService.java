@@ -10,17 +10,17 @@ import java.util.*;
 
 @Service
 public class ConfigurationService {
-    private final JdbcTemplate jdbc; private final NfcAssetService nfc;
-    public ConfigurationService(JdbcTemplate jdbc,NfcAssetService nfc){this.jdbc=jdbc;this.nfc=nfc;}
+    private final JdbcTemplate jdbc; private final NfcAssetService nfc;private final com.yesbee.nwtrack.auth.AccessPolicy access;
+    public ConfigurationService(JdbcTemplate jdbc,NfcAssetService nfc,com.yesbee.nwtrack.auth.AccessPolicy access){this.jdbc=jdbc;this.nfc=nfc;this.access=access;}
     public UUID station(String reference,UUID stationId){
         if(reference==null||reference.isBlank()){
             if(stationId==null)throw new IllegalArgumentException("stationReference is required");
-            jdbc.queryForObject("select id from stations where id=? and active",UUID.class,stationId);return stationId;
+            jdbc.queryForObject("select id from stations where id=? and active",UUID.class,stationId);access.station(stationId);return stationId;
         }
         String ref=reference.trim();if(ref.length()>50)throw new IllegalArgumentException("Station reference exceeds 50 characters");
         jdbc.update("insert into stations(code,name) values (?,?) on conflict (lower(code)) do nothing",ref,ref);
         UUID id=jdbc.queryForObject("select id from stations where lower(code)=lower(?) and active",UUID.class,ref);
-        if(stationId!=null&&!id.equals(stationId))throw new IllegalArgumentException("stationId and stationReference do not match");return id;
+        if(stationId!=null&&!id.equals(stationId))throw new IllegalArgumentException("stationId and stationReference do not match");access.station(id);return id;
     }
     @Transactional public UUID saveProcess(UUID existing,ProcessCommand r,UUID actor){
         UUID id=existing==null?UUID.randomUUID():existing;
@@ -54,6 +54,8 @@ public class ConfigurationService {
             else if(jdbc.update("update machines set station_id=?,name=?,description=?,machine_type=?,active=true,status='AVAILABLE',version=version+1 where id=? and process_id=? and not exists(select 1 from process_machine_usage where machine_id=? and completed_at is null)",station,d.name().trim(),d.description(),type,device,id,device)!=1)throw new IllegalArgumentException("Device belongs to another process or is in use");
             assignRegistered(registeredUid(d.nfcUid(),d.tagId()),"MACHINE",device,actor);
         }
+        // A scoped creator can continue managing the process it just created at an authorized station.
+        if(existing==null&&!access.global())jdbc.update("insert into user_process_assignments(user_id,process_id,active_on_shift) values (?,?,false) on conflict do nothing",actor,id);
         return id;
     }
     public void assignRegistered(String uid,String type,UUID asset,UUID actor){

@@ -44,6 +44,104 @@ class PostgresWorkflowIntegrationTest {
         assertThat(result.status()).as(result.body().toString()).isEqualTo(200);return result.body().get("accessToken").asText();
     }
 
+    @Test void v21ModuleIsolationDynamicRolesOwnershipAndScopedLookups()throws Exception{
+        String admin=login("admin","PC"),suffix=UUID.randomUUID().toString().substring(0,8);
+        assertThat(call("GET","/api/v1/modules",null,admin).body().size()).isGreaterThanOrEqualTo(9);
+        assertThat(call("DELETE","/api/v1/access-roles/NW",null,admin).status()).isEqualTo(409);
+        assertThat(call("PUT","/api/v1/access-roles/NW",java.util.Map.of("modules",List.of("dashboard")),admin).status()).isEqualTo(400);
+        Reply module=call("POST","/api/v1/modules",java.util.Map.of("name","Custom "+suffix),admin);
+        assertThat(module.status()).as(module.body().toString()).isEqualTo(200);String moduleKey=module.body().get("key").asText();
+        assertThat(call("POST","/api/v1/modules",java.util.Map.of("name","CUSTOM "+suffix),admin).status()).isEqualTo(409);
+        Reply role=call("POST","/api/v1/access-roles",java.util.Map.of("name","Scoped "+suffix,"modules",List.of("process",moduleKey)),admin);
+        assertThat(role.status()).as(role.body().toString()).isEqualTo(200);String code=role.body().get("code").asText();
+        assertThat(call("POST","/api/v1/access-roles",java.util.Map.of("name","SCOPED "+suffix,"modules",List.of()),admin).status()).isEqualTo(409);
+        UUID station=UUID.randomUUID(),process=UUID.randomUUID(),outsideStation=UUID.randomUUID(),outside=UUID.randomUUID();
+        jdbc.update("insert into stations(id,code,name) values (?,?,?),(?,?,?)",station,"SC-"+suffix,"Scoped",outsideStation,"OUT-"+suffix,"Outside");
+        jdbc.update("insert into processes(id,code,name,station_id) values (?,?,?,?),(?,?,?,?)",process,"SC-P-"+suffix,"Scoped process",station,outside,"OUT-P-"+suffix,"Other process",outsideStation);
+        String username="custom-"+suffix;
+        Reply user=call("POST","/api/v1/users",java.util.Map.of("username",username,"displayName","Custom","initialPassword","ChangeMe123!","role",code,"processAssignments",List.of(java.util.Map.of("processId",process.toString(),"activeOnShift",true))),admin);
+        assertThat(user.status()).isEqualTo(200);String userId=user.body().get("id").asText(),token=login(username,"PC");
+        Reply me=call("GET","/api/v1/auth/me",null,token);assertThat(me.status()).isEqualTo(200);assertThat(me.body().get("modules").size()).isEqualTo(2);
+        assertThat(call("GET","/api/v1/processes",null,token).body().size()).isEqualTo(1);
+        assertThat(call("GET","/api/v1/processes/"+outside,null,token).status()).isEqualTo(403);
+        assertThat(call("GET","/api/v1/ui/lookups",null,token).body().get("processes").size()).isEqualTo(1);
+        String newUid="NEW-P-"+suffix;
+        assertThat(call("POST","/api/v1/nfc-tags",java.util.Map.of("name",newUid,"uid",newUid),admin).status()).isEqualTo(200);
+        assertThat(call("POST","/api/v1/processes",java.util.Map.of("name","Forbidden","stationNumber","OUT-"+suffix,"nfcMode","PROCESS","nfcUid",newUid),token).status()).isEqualTo(403);
+        Reply createdProcess=call("POST","/api/v1/processes",java.util.Map.of("name","New scoped process","stationNumber","SC-"+suffix,"nfcMode","PROCESS","nfcUid",newUid),token);
+        assertThat(createdProcess.status()).as(createdProcess.body().toString()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/processes/"+createdProcess.body().get("id").asText(),null,token).status()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("select active_on_shift from user_process_assignments where user_id=?::uuid and process_id=?::uuid",Boolean.class,userId,createdProcess.body().get("id").asText())).isFalse();
+        for(String path:List.of("/api/v1/storage-areas","/api/v1/nfc-tags","/api/v1/users","/api/v1/access-roles","/api/v1/dashboard","/api/v1/reports/lot-history?lotId="+UUID.randomUUID()))assertThat(call("GET",path,null,token).status()).as(path).isEqualTo(403);
+        assertThat(call("GET","/api/v1/modules/"+moduleKey+"/content",null,token).body().get("status").asText()).isEqualTo("WORK_IN_PROGRESS");
+        // Role changes affect existing JWTs immediately; Dashboard and Reports stay independent.
+        assertThat(call("PUT","/api/v1/access-roles/"+code,java.util.Map.of("modules",List.of("dashboard")),admin).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/dashboard",null,token).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/reports/lot-history?lotId="+UUID.randomUUID(),null,token).status()).isEqualTo(403);
+        assertThat(call("GET","/api/v1/processes",null,token).status()).isEqualTo(403);
+        assertThat(call("GET","/api/v1/modules/"+moduleKey+"/content",null,token).status()).isEqualTo(403);
+        assertThat(call("DELETE","/api/v1/access-roles/"+code,null,admin).status()).isEqualTo(409);
+        // Storage form lookups work without access to Process or Tag Management.
+        assertThat(call("PUT","/api/v1/access-roles/"+code,java.util.Map.of("modules",List.of("storage")),admin).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/storage-areas",null,token).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/nfc-tags",null,token).status()).isEqualTo(403);
+        assertThat(call("GET","/api/v1/ui/lookups",null,token).body().has("tags")).isTrue();
+        String uid="ROLE-STORE-"+suffix;
+        assertThat(call("POST","/api/v1/nfc-tags",java.util.Map.of("name",uid,"uid",uid),admin).status()).isEqualTo(200);
+        assertThat(call("POST","/api/v1/storage-areas",java.util.Map.of("storageNumber","DENIED-"+suffix,"stationNumber","OUT-"+suffix,"nfcUid",uid),token).status()).isEqualTo(403);
+        assertThat(call("POST","/api/v1/storage-areas",java.util.Map.of("storageNumber","ALLOW-"+suffix,"stationNumber","SC-"+suffix,"nfcUid",uid),token).status()).isEqualTo(200);
+        // USERS lookup supplies dynamic role choices without the ROLES administration module.
+        assertThat(call("PUT","/api/v1/access-roles/"+code,java.util.Map.of("modules",List.of("users")),admin).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/access-roles/options",null,token).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/access-roles",null,token).status()).isEqualTo(403);
+        // A module with no grants still permits login/me, but no application data.
+        assertThat(call("PUT","/api/v1/access-roles/"+code,java.util.Map.of("modules",List.of()),admin).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/auth/me",null,token).body().get("modules").size()).isZero();
+        assertThat(call("GET","/api/v1/ui/lookups",null,token).status()).isEqualTo(403);
+        // Style Configurator creates atomically and sees only its own records, including drafts.
+        String author="author-"+suffix,otherAuthor="other-author-"+suffix;
+        for(String name:List.of(author,otherAuthor))assertThat(call("POST","/api/v1/users",java.util.Map.of("username",name,"displayName",name,"initialPassword","ChangeMe123!","role","STYLE_CONFIGURATOR"),admin).status()).isEqualTo(200);
+        String authorToken=login(author,"PC"),otherToken=login(otherAuthor,"PC");
+        assertThat(call("GET","/api/v1/ui/lookups",null,authorToken).body().get("processes").size()).isGreaterThanOrEqualTo(2);
+        assertThat(call("GET","/api/v1/processes",null,authorToken).status()).isEqualTo(403);
+        Reply style=call("POST","/api/v1/styles",java.util.Map.of("styleNumber","OWN-"+suffix,"description","Own","processIds",List.of(process.toString())),authorToken);
+        assertThat(style.status()).as(style.body().toString()).isEqualTo(200);String styleId=style.body().get("id").asText();
+        assertThat(call("GET","/api/v1/styles",null,authorToken).body().size()).isEqualTo(1);
+        assertThat(call("GET","/api/v1/styles/"+styleId+"/derived-route",null,authorToken).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/styles",null,otherToken).body().size()).isZero();
+        assertThat(call("GET","/api/v1/styles/"+styleId,null,otherToken).status()).isEqualTo(403);
+        assertThat(call("GET","/api/v1/styles/"+styleId+"/derived-route",null,otherToken).status()).isEqualTo(403);
+        assertThat(call("PUT","/api/v1/styles/"+styleId+"/processes",List.of(outside.toString()),authorToken).status()).isEqualTo(403);
+        assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,authorToken).status()).isEqualTo(403);
+        assertThat(call("POST","/api/v1/styles",java.util.Map.of("styleNumber","EMPTY-"+suffix),authorToken).status()).isEqualTo(400);
+        // Failed route validation rolls back the whole create.
+        UUID sameStationProcess=UUID.randomUUID();jdbc.update("insert into processes(id,code,name,station_id) values (?,?,?,?)",sameStationProcess,"SECOND-"+suffix,"Second",station);
+        assertThat(call("POST","/api/v1/styles",java.util.Map.of("styleNumber","BAD-"+suffix,"processIds",List.of(process.toString(),outside.toString(),sameStationProcess.toString())),authorToken).status()).isEqualTo(409);
+        assertThat(jdbc.queryForObject("select count(*) from styles where style_number=?",Integer.class,"BAD-"+suffix)).isZero();
+        assertThat(call("PUT","/api/v1/users/"+userId+"/roles",java.util.Map.of("role","PROCESS_MANAGER"),admin).status()).isEqualTo(200);
+        assertThat(call("DELETE","/api/v1/access-roles/"+code,null,admin).status()).isEqualTo(200);
+        assertThat(call("PUT","/api/v1/users/"+userId+"/roles",java.util.Map.of("role",code),admin).status()).isEqualTo(404);
+        assertThat(call("GET","/api/v1/auth/me",null,token).status()).isEqualTo(403);
+    }
+
+    @Test void v6PreservesStationZeroUsersAndReplacesTheirAccess(){
+        String schema="role_upgrade_"+UUID.randomUUID().toString().replace("-","");
+        var source=new org.springframework.jdbc.datasource.DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword());
+        var before=org.flywaydb.core.Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).target("5").load();before.migrate();
+        var upgradeJdbc=new JdbcTemplate(new org.springframework.jdbc.datasource.DriverManagerDataSource(postgres.getJdbcUrl()+"&currentSchema="+schema,postgres.getUsername(),postgres.getPassword()));
+        UUID user=UUID.randomUUID(),oldRole=upgradeJdbc.queryForObject("select id from roles where code='STATION_0'",UUID.class);
+        upgradeJdbc.update("insert into users(id,username,display_name,password_hash) values (?,'station-zero','Station zero','test')",user);
+        upgradeJdbc.update("insert into user_roles values (?,?)",user,oldRole);
+        org.flywaydb.core.Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).load().migrate();
+        assertThat(upgradeJdbc.queryForObject("select role_id from user_roles where user_id=?",UUID.class,user)).isEqualTo(oldRole);
+        assertThat(upgradeJdbc.queryForObject("select code from roles where id=?",String.class,oldRole)).isEqualTo("STYLE_CONFIGURATOR");
+        assertThat(upgradeJdbc.queryForList("select module_key from role_modules where role_id=?",String.class,oldRole)).containsExactly("newstyle");
+        assertThat(upgradeJdbc.queryForList("select permission from role_permissions where role_id=?",String.class,oldRole)).containsExactly("READ");
+        assertThat(upgradeJdbc.queryForObject("select pad_access from roles where id=?",Boolean.class,oldRole)).isFalse();
+        assertThat(upgradeJdbc.queryForObject("select pc_access from roles where code='SUPERVISOR'",Boolean.class)).isTrue();
+        assertThat(upgradeJdbc.queryForObject("select count(*) from roles where built_in",Integer.class)).isEqualTo(7);
+    }
+
     @Test void configurationFieldsAssignmentsPermissionsAndChannels()throws Exception{
         String admin=login("admin","PC"),suffix=UUID.randomUUID().toString().substring(0,8);
         String processUid="P-"+suffix,deviceUid="D-"+suffix,storageUid="S-"+suffix;
@@ -79,10 +177,10 @@ class PostgresWorkflowIntegrationTest {
         Reply own=call("GET","/api/v1/stations",null,pm);assertThat(own.status()).isEqualTo(200);assertThat(own.body().size()).isEqualTo(2);
         assertThat(call("GET","/api/v1/users",null,pm).status()).isEqualTo(403);
         assertThat(call("GET","/api/v1/access-roles",null,admin).body().size()).isEqualTo(7);
-        assertThat(call("POST","/api/v1/access-roles",java.util.Map.of("code","CUSTOM"),admin).status()).isEqualTo(405);
+        assertThat(call("POST","/api/v1/access-roles",java.util.Map.of("code","CUSTOM"),admin).status()).isEqualTo(400);
         Reply supervisor=call("POST","/api/v1/users",java.util.Map.of("username","sup-"+suffix,"displayName","Supervisor","initialPassword","ChangeMe123!","role","SUPERVISOR"),admin);
         assertThat(supervisor.status()).isEqualTo(200);
-        assertThat(call("POST","/api/v1/auth/login",java.util.Map.of("username","sup-"+suffix,"password","ChangeMe123!","clientType","PC"),null).status()).isEqualTo(403);
+        assertThat(call("POST","/api/v1/auth/login",java.util.Map.of("username","sup-"+suffix,"password","ChangeMe123!","clientType","PC"),null).status()).isEqualTo(200);
         String sup=login("sup-"+suffix,"PAD");assertThat(call("GET","/api/v1/stations/"+station,null,sup).status()).isEqualTo(403);
         assertThat(call("GET","/api/v1/stations/%"+Integer.toHexString(station.charAt(0))+station.substring(1),null,sup).status()).isEqualTo(403);
         // Role permission edits are effective for an already-issued token.

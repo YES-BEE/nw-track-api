@@ -32,8 +32,8 @@ public class AuthController {
         JwtClaimsSet claims = JwtClaimsSet.builder().issuer(properties.security().issuer()).issuedAt(now).expiresAt(expires).subject(auth.getName()).claim("roles", roles).claim("clientType",request.clientType()).build();
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
         String token = encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
-        return new TokenResponse(token, "Bearer", properties.security().accessTokenTtl().toSeconds(), auth.getName(), roles,assignments.forUsername(auth.getName()));
+        return new TokenResponse(token, "Bearer", properties.security().accessTokenTtl().toSeconds(), auth.getName(), roles,assignments.forUsername(auth.getName()),access.modulesForUsername(auth.getName()));
     }
     public record LoginRequest(@NotBlank String username, @NotBlank String password,@NotBlank @jakarta.validation.constraints.Pattern(regexp="PC|PAD") String clientType) {}
-    public record TokenResponse(String accessToken, String tokenType, long expiresIn, String username, List<String> roles,List<com.yesbee.nwtrack.users.ProcessAssignmentService.View> processAssignments) {}
+    public record TokenResponse(String accessToken, String tokenType, long expiresIn, String username, List<String> roles,List<com.yesbee.nwtrack.users.ProcessAssignmentService.View> processAssignments,List<java.util.Map<String,Object>> modules) {}
 }

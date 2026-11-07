@@ -1,5 +1,7 @@
 # Configuration v8: implemented design
 
+> Authorization update: V6 replaces the fixed-only desktop access model below. Use [ROLE_MODULES_V21.md](ROLE_MODULES_V21.md) for current custom roles, independent module grants and Style Configurator. Earlier role tables are historical v8 context.
+
 Updated 4 November 2026. The authoritative current change contract is [Process-only assignments and mock configuration](PROCESS_ASSIGNMENT_V5.md). It supersedes separate station assignments and extra mandatory configuration fields.
 
 | Mock / use case | Current API behavior |

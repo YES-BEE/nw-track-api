@@ -14,6 +14,11 @@ public class ProductionService {
     public ProductionService(JdbcTemplate jdbc,RouteDerivationService routes){this.jdbc=jdbc;this.routes=routes;}
 
     @Transactional public UUID createStyle(String number,String description,UUID actor){UUID id=UUID.randomUUID();jdbc.update("insert into styles(id,style_number,description,status,created_by) values (?,?,?,'DRAFT',?)",id,number.trim(),description,actor);return id;}
+    @Transactional public UUID createConfiguredStyle(String number,String description,UUID actor,List<UUID> processes){
+        UUID id=createStyle(number,description,actor);
+        if(processes!=null&&!processes.isEmpty()){setProcesses(id,processes);derive(id);}
+        return id;
+    }
     @Transactional public void setProcesses(UUID styleId,List<UUID> processIds){String status=jdbc.queryForObject("select status from styles where id=? for update",String.class,styleId);if(!"DRAFT".equals(status))throw new BusinessRuleException("STYLE_IMMUTABLE","Processes cannot change after Style release");jdbc.update("delete from style_processes where style_id=?",styleId);int sequence=1;for(UUID processId:processIds)jdbc.update("insert into style_processes(id,style_id,process_id,sequence_no) values (?,?,?,?)",UUID.randomUUID(),styleId,processId,sequence++);}
     public List<RouteDerivationService.RouteEntry> derive(UUID styleId){return routes.derive(selected(styleId));}
 
