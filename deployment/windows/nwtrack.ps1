@@ -215,13 +215,24 @@ function Start-NwTrack {
     New-EnvironmentFile
     Set-DeploymentMode
     if ((Get-Settings).HTTPS_ENABLED -eq "true") { Ensure-Certificates }
+    # Preserve available console history before Compose can replace old containers.
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "support.ps1") archive
+    if ($LASTEXITCODE -ne 0) { Write-Warning "Log archive was incomplete; deployment will continue. Use support.cmd bundle for diagnostics." }
     & $script:DockerComposeExe --env-file $environmentFile -f $composeFile up -d --build --remove-orphans
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "Compose detected containers or networks from an older deployment. Cleaning them without deleting database volumes, then retrying once."
-        & $script:DockerComposeExe --env-file $environmentFile -f $composeFile down --remove-orphans
-        if ($LASTEXITCODE -ne 0) { throw "Docker Compose could not reconcile the previous NW Track deployment." }
-        & $script:DockerComposeExe --env-file $environmentFile -f $composeFile up -d --build
-        if ($LASTEXITCODE -ne 0) { throw "Docker Compose could not start NW Track after cleaning the previous deployment." }
+        Write-Warning "Docker Compose reported a startup error. Checking the engine before retrying; existing services and database volumes will be retained."
+        & docker version --format '{{.Server.Version}}'
+        if ($LASTEXITCODE -ne 0) {
+            throw "Docker Desktop is not responding. Restart Docker Desktop, wait until its engine is ready, then run deployment\windows\install.cmd start again."
+        }
+        & $script:DockerComposeExe --env-file $environmentFile -f $composeFile ps -a
+        & $script:DockerComposeExe --env-file $environmentFile -f $composeFile logs --tail 80 api
+        Start-Sleep -Seconds 5
+        & $script:DockerComposeExe --env-file $environmentFile -f $composeFile up -d --build --remove-orphans
+        if ($LASTEXITCODE -ne 0) {
+            & $script:DockerComposeExe --env-file $environmentFile -f $composeFile logs --tail 100 api
+            throw "Docker Compose could not start NW Track after one retry. Review the API logs above; if Docker reports a named-pipe/API 500 error, restart Docker Desktop and retry. No database volumes were deleted."
+        }
     }
     Wait-ForApi
     & $script:DockerComposeExe ps

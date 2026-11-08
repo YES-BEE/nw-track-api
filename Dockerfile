@@ -9,6 +9,7 @@ FROM eclipse-temurin:25-jre
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 RUN useradd --system --uid 10001 nwtrack
+RUN mkdir -p /var/log/nwtrack && chown nwtrack:nwtrack /var/log/nwtrack
 WORKDIR /app
 COPY --from=build /build/target/*.jar app.jar
 USER nwtrack

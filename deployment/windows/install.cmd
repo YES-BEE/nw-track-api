@@ -1,4 +1,5 @@
 @echo off
+rem start installs/starts services and enables scheduled log archiving; support exports a ZIP.
 setlocal
 set "ACTION=%~1"
 if "%ACTION%"=="" set "ACTION=start"

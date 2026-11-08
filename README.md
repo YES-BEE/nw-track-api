@@ -2,6 +2,8 @@
 
 Spring Boot modular-monolith implementation of the consolidated NW Track backend and deployment design.
 
+For on-prem retention and one-command support ZIP extraction, see [on-prem logging](docs/ON_PREM_LOGGING.md).
+
 Client developers should start with [docs/API_INTEGRATION_GUIDE.md](docs/API_INTEGRATION_GUIDE.md) for Android operator, admin portal, supervisor, and display-screen integration.
 
 For the latest role-based HTML, use the [v21 screen, field and button integration map](docs/UI_V21_API_INTEGRATION.md), including supported APIs and remaining backend gaps.

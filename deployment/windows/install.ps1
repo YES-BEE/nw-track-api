@@ -1,9 +1,10 @@
 param(
-    [ValidateSet("start", "configure", "status", "test", "remove")]
+    [ValidateSet("start", "configure", "status", "test", "remove", "support")]
     [string]$Action = "start",
     [string]$BindAddress,
     [string]$AllowedSubnet,
-    [switch]$EnableHttps
+    [switch]$EnableHttps,
+    [ValidateRange(1,720)][int]$SinceHours = 24
 )
 
 $ErrorActionPreference = "Stop"
@@ -261,11 +262,35 @@ function Test-Deployment {
     Write-Host "Test this same URL from another device connected to the home Wi-Fi." -ForegroundColor Cyan
 }
 
+function Enable-LogArchiving {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "support.ps1") schedule
+    if ($LASTEXITCODE -ne 0) {
+        throw "NW Track is running, but automatic log archiving could not be configured. Review the error above and rerun install.cmd start under the Windows account that runs Docker Desktop."
+    }
+    Write-Host "Automatic log archiving is enabled (every five minutes while the Docker user is logged in)." -ForegroundColor Green
+    Write-Host "To export logs later: deployment\windows\install.cmd support" -ForegroundColor Cyan
+}
+
 if ($Action -in @("start","configure","remove") -and -not (Test-Administrator)) { Invoke-Elevated }
 
 switch ($Action) {
     "configure" { Configure-Network }
-    "start" { Configure-Network; & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "nwtrack.ps1") start; if ($LASTEXITCODE -ne 0) { throw "NW Track startup failed with exit code $LASTEXITCODE." }; if ($EnableHttps) { Enable-LocalDns; Install-FactoryCa } else { Restore-ClientDns; if ((Get-EnvironmentValue "ICS_DISABLED_BY_NWTRACK") -eq "true") { Restore-InternetConnectionSharing; Set-EnvironmentValue "ICS_DISABLED_BY_NWTRACK" "false" } }; Test-Deployment }
+    "start" {
+        Configure-Network
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "nwtrack.ps1") start
+        if ($LASTEXITCODE -ne 0) { throw "NW Track startup failed with exit code $LASTEXITCODE." }
+        if ($EnableHttps) { Enable-LocalDns; Install-FactoryCa }
+        else {
+            Restore-ClientDns
+            if ((Get-EnvironmentValue "ICS_DISABLED_BY_NWTRACK") -eq "true") { Restore-InternetConnectionSharing; Set-EnvironmentValue "ICS_DISABLED_BY_NWTRACK" "false" }
+        }
+        Test-Deployment
+        Enable-LogArchiving
+    }
+    "support" {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "support.ps1") bundle -SinceHours $SinceHours
+        if ($LASTEXITCODE -ne 0) { throw "Support collection was incomplete. Check the bundle output and capture.txt for diagnostics." }
+    }
     "status" { Show-Status }
     "test" { Test-Deployment }
     "remove" {
