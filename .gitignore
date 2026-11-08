@@ -1,0 +1,15 @@
+target/
+.tools/
+.settings/
+.classpath
+.project
+.idea/
+.vscode/
+*.iml
+*.log
+data/
+backups/
+certs/
+*.jks
+*.p12
+*.key
