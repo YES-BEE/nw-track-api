@@ -8,6 +8,7 @@ The complete frontend handoff is in [Postman setup and use cases](postman/README
 - [LAN environment: HTTP by IP](postman/NW_Track_LAN.postman_environment.json)
 - [Field coverage, access model and architecture](CONFIGURATION_V8_DESIGN.md)
 - [V6 roles, independent module grants and migration](ROLE_MODULES_V21.md)
+- [Frontend CORS configuration and preflight diagnosis](FRONTEND_CORS.md)
 
 Windows defaults to `http://<server-Wi-Fi-IP>`. Swagger is `/swagger-ui.html`, OpenAPI is `/v3/api-docs`, and public health is `/actuator/health`. Set the same base URL in every frontend. The server and clients must share the local network. Optional HTTPS is enabled with `deployment\windows\install.cmd start -EnableHttps`; that mode requires local domain DNS and client CA trust.
 

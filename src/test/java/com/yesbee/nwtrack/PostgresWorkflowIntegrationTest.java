@@ -142,6 +142,38 @@ class PostgresWorkflowIntegrationTest {
         assertThat(upgradeJdbc.queryForObject("select count(*) from roles where built_in",Integer.class)).isEqualTo(7);
     }
 
+    @Test void corsPreflightAndActualResponsesAreHandledBeforeAuthentication()throws Exception{
+        var client=java.net.http.HttpClient.newHttpClient();
+        for(String path:List.of("/api/v1/auth/login","/api/v1/processes","/api/v1/access-roles/NW")){
+            var request=java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:"+port+path))
+                .header("Origin","http://localhost:8080")
+                .header("Access-Control-Request-Method","PUT")
+                .header("Access-Control-Request-Headers","authorization,content-type")
+                .method("OPTIONS",java.net.http.HttpRequest.BodyPublishers.noBody()).build();
+            var response=client.send(request,java.net.http.HttpResponse.BodyHandlers.ofString());
+            assertThat(response.statusCode()).as(path).isEqualTo(200);
+            assertThat(response.headers().firstValue("Access-Control-Allow-Origin")).contains("http://localhost:8080");
+            assertThat(response.headers().firstValue("Access-Control-Allow-Methods").orElse("")).contains("PUT");
+            assertThat(response.headers().firstValue("Access-Control-Allow-Headers").orElse("").toLowerCase()).contains("authorization","content-type");
+        }
+        var forbidden=java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:"+port+"/api/v1/processes"))
+            .header("Origin","http://untrusted.example").header("Access-Control-Request-Method","GET")
+            .method("OPTIONS",java.net.http.HttpRequest.BodyPublishers.noBody()).build();
+        var blocked=client.send(forbidden,java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(blocked.statusCode()).isEqualTo(403);assertThat(blocked.headers().firstValue("Access-Control-Allow-Origin")).isEmpty();
+        // Cross-origin real requests retain authentication and authorization, with readable errors.
+        var unauthenticated=java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:"+port+"/api/v1/processes"))
+            .header("Origin","http://localhost:8080").GET().build();
+        var denied=client.send(unauthenticated,java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(denied.statusCode()).isEqualTo(401);
+        assertThat(denied.headers().firstValue("Access-Control-Allow-Origin")).contains("http://localhost:8080");
+        var authenticated=java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:"+port+"/api/v1/processes"))
+            .header("Origin","http://localhost:8080").header("Authorization","Bearer "+login("admin","PC")).GET().build();
+        var allowed=client.send(authenticated,java.net.http.HttpResponse.BodyHandlers.ofString());
+        assertThat(allowed.statusCode()).isEqualTo(200);
+        assertThat(allowed.headers().firstValue("Access-Control-Allow-Origin")).contains("http://localhost:8080");
+    }
+
     @Test void configurationFieldsAssignmentsPermissionsAndChannels()throws Exception{
         String admin=login("admin","PC"),suffix=UUID.randomUUID().toString().substring(0,8);
         String processUid="P-"+suffix,deviceUid="D-"+suffix,storageUid="S-"+suffix;

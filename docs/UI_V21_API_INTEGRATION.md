@@ -25,7 +25,7 @@ V6 replaces STATION_0 with STYLE_CONFIGURATOR in place, preserving user associat
 
 Configure `baseUrl` as `http://<actual-server-Wi-Fi-IP>`; all paths here include `/api/v1`. Swagger is `/swagger-ui.html`, OpenAPI `/v3/api-docs`, health `/actuator/health`. Deploy current code/V6 before integration. No database reset is required.
 
-Serve/proxy the UI and `/api` on one browser origin, or separately configure explicit REST CORS. Current backend security does not enable REST CORS; opening the mock as file:// is not a complete deployment. The WebSocket origins property does not configure REST CORS. This API does not bundle the mock as a running frontend.
+REST CORS is configurable through `CORS_ALLOWED_ORIGINS` in the server `.env`, e.g. `CORS_ALLOWED_ORIGINS=http://localhost:5173`. Use exact frontend origins without a trailing slash; separate multiple origins with commas. Rebuild/recreate the API after changes. See [frontend CORS setup](FRONTEND_CORS.md). Alternatively use a same-origin proxy. This API does not bundle the mock as a running frontend; serve it over HTTP rather than file://.
 
 Use an HTTP helper that adds `Authorization: Bearer <accessToken>`, JSON-encodes request bodies with Content-Type application/json, checks `response.ok`, handles empty success bodies and retains HTTP status plus error code/detail/fieldErrors. Collections return direct arrays. CRUD record handlers generally return 200; do not require 201 or assume every response has JSON.
 
