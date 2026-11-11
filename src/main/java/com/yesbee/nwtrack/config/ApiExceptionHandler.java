@@ -34,8 +34,8 @@ public class ApiExceptionHandler {
     ProblemDetail invalid(IllegalArgumentException ex) {
         ProblemDetail detail=ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,ex.getMessage());detail.setTitle("Invalid request");detail.setProperty("code","INVALID_ARGUMENT");return detail;
     }
-    @ExceptionHandler(BadCredentialsException.class)
-    ProblemDetail unauthorized(BadCredentialsException ex) {
+    @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
+    ProblemDetail unauthorized(org.springframework.security.core.AuthenticationException ex) {
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
         detail.setTitle("Authentication failed"); detail.setProperty("code", "AUTHENTICATION_FAILED"); return detail;
     }

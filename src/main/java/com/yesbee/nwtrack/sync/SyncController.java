@@ -29,15 +29,17 @@ public class SyncController {
     @GetMapping("/bootstrap") public Map<String,Object> bootstrap(@AuthenticationPrincipal Jwt jwt){
         UUID actor=actors.id(jwt);Map<String,Object> result=new LinkedHashMap<>();
         result.put("processAssignments",assignments.list(actor));
-        result.put("visits",jdbc.queryForList("select sv.id,sv.station_id,sv.lot_id,l.lot_number,st.style_number,sv.status,sv.dispatched_at,sv.version from station_visits sv join lots l on l.id=sv.lot_id join styles st on st.id=l.style_id where "+access.stationPredicate("sv.station_id")+" and sv.status in ('DISPATCHED','RECEIVED','ACTIVE','READY_FOR_DISPATCH')"));
-        result.put("processes",jdbc.queryForList("select pe.id,pe.station_visit_id,pe.process_id,p.code,p.name,p.quality,p.nfc_mode,pe.sequence_no,pe.status,pe.version from process_executions pe join processes p on p.id=pe.process_id join station_visits sv on sv.id=pe.station_visit_id where "+access.stationPredicate("sv.station_id")+" and "+access.processPredicate("pe.process_id")+" and sv.status in ('DISPATCHED','RECEIVED','ACTIVE','READY_FOR_DISPATCH')"));
+        result.put("visits",com.yesbee.nwtrack.shared.Pages.query(jdbc,"select sv.id,sv.station_id,sv.lot_id,l.lot_number,st.style_number,sv.status,sv.dispatched_at,sv.version from station_visits sv join lots l on l.id=sv.lot_id join styles st on st.id=l.style_id where "+access.stationPredicate("sv.station_id")+" and sv.status in ('DISPATCHED','RECEIVED','ACTIVE','READY_FOR_DISPATCH') order by sv.id"));
+        result.put("processes",com.yesbee.nwtrack.shared.Pages.query(jdbc,"select pe.id,pe.station_visit_id,pe.process_id,p.code,p.name,p.quality,p.nfc_mode,pe.sequence_no,pe.status,pe.version from process_executions pe join processes p on p.id=pe.process_id join station_visits sv on sv.id=pe.station_visit_id where "+access.stationPredicate("sv.station_id")+" and "+access.processPredicate("pe.process_id")+" and sv.status in ('DISPATCHED','RECEIVED','ACTIVE','READY_FOR_DISPATCH') order by pe.id"));
         result.put("serverTime",OffsetDateTime.now());return result;
     }
-    @GetMapping("/changes") public Map<String,Object> changes(@RequestParam OffsetDateTime since,@AuthenticationPrincipal Jwt jwt){
+    @GetMapping("/changes") public Map<String,Object> changes(@RequestParam OffsetDateTime since,@RequestParam(required=false) OffsetDateTime until,@AuthenticationPrincipal Jwt jwt){
+        OffsetDateTime watermark=until==null?OffsetDateTime.now():until;
+        if(watermark.isBefore(since)||watermark.isAfter(OffsetDateTime.now()))throw new IllegalArgumentException("until must be between since and the current time");
         Map<String,Object> result=new LinkedHashMap<>();
-        result.put("processEvents",jdbc.queryForList("select pse.* from process_state_events pse join process_executions pe on pe.id=pse.process_execution_id join station_visits sv on sv.id=pe.station_visit_id where "+access.stationPredicate("sv.station_id")+" and "+access.processPredicate("pe.process_id")+" and pse.occurred_at>? order by pse.occurred_at",since));
-        result.put("locationEvents",jdbc.queryForList("select le.* from lot_location_events le where "+access.lotPredicate("le.lot_id")+" and le.occurred_at>? order by le.occurred_at",since));
-        result.put("serverTime",OffsetDateTime.now());return result;
+        result.put("processEvents",com.yesbee.nwtrack.shared.Pages.query(jdbc,"select pse.* from process_state_events pse join process_executions pe on pe.id=pse.process_execution_id join station_visits sv on sv.id=pe.station_visit_id where "+access.stationPredicate("sv.station_id")+" and "+access.processPredicate("pe.process_id")+" and pse.occurred_at>? and pse.occurred_at<=? order by pse.occurred_at,pse.id",since,watermark));
+        result.put("locationEvents",com.yesbee.nwtrack.shared.Pages.query(jdbc,"select le.* from lot_location_events le where "+access.lotPredicate("le.lot_id")+" and le.occurred_at>? and le.occurred_at<=? order by le.occurred_at,le.id",since,watermark));
+        result.put("serverTime",watermark);return result;
     }
     @PostMapping("/events") public List<EventResult> events(@Valid @RequestBody EventBatch batch,@AuthenticationPrincipal Jwt jwt){
         UUID actor=actors.id(jwt);List<EventResult> results=new ArrayList<>();

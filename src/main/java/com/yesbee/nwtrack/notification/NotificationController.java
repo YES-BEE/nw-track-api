@@ -1,5 +1,8 @@
 package com.yesbee.nwtrack.notification;
 
+import com.yesbee.nwtrack.shared.ApiPage;
+import com.yesbee.nwtrack.shared.Pages;
+
 import com.yesbee.nwtrack.shared.ActorResolver;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -14,5 +17,5 @@ import java.util.Map;
 public class NotificationController {
     private final JdbcTemplate jdbc;private final ActorResolver actors;
     public NotificationController(JdbcTemplate jdbc,ActorResolver actors){this.jdbc=jdbc;this.actors=actors;}
-    @GetMapping public List<Map<String,Object>> mine(@AuthenticationPrincipal Jwt jwt,@RequestParam(defaultValue="50") int limit){int bounded=Math.max(1,Math.min(limit,200));return jdbc.queryForList("select id,event_type,payload,created_at,delivered_at from notifications where recipient_user_id=? order by created_at desc limit ?",actors.id(jwt),bounded);}
+    @GetMapping public ApiPage<Map<String,Object>> mine(@AuthenticationPrincipal Jwt jwt){return Pages.query(jdbc,"select id,event_type,payload,created_at,delivered_at from notifications where recipient_user_id=? order by created_at desc,id",actors.id(jwt));}
 }

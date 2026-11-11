@@ -52,7 +52,7 @@ Replace sample arrays, Date.now IDs and localStorage stores (`nw-track-process-c
 {"username":"<actual username>","password":"<actual password>","clientType":"PC"}
 ```
 
-Login/refresh return accessToken, tokenType, expiresIn, username, roles, processAssignments and **modules**. GET `/api/v1/auth/me` returns id, username, display_name, enabled, must_change_password, role, clientType, permissions, processAssignments, modules. A module item is `{key,name,built_in}`. Call auth/me after role/module edits or page initialization; current database grants apply on every request. User role changes require login again.
+Login/refresh return accessToken, tokenType, expiresIn, username, roles, processAssignments and **modules**. GET `/api/v1/auth/me` returns id, username, display_name, enabled, status, must_change_password, role, clientType, permissions, processAssignments, modules. A module item is `{key,name,built_in}`. Call auth/me after role/module edits or page initialization; current database grants apply on every request. User role changes require login again.
 
 Add the missing forced-password-change flow when must_change_password is true: POST `/api/v1/auth/change-password` with currentPassword/newPassword. Optional refresh: POST `/auth/refresh-tokens` with Bearer authorization and no body, save refreshToken/expiresAt securely; POST `/auth/refresh` with refreshToken to obtain another access token. Logout POST `/auth/logout` takes refreshToken and Bearer authorization; refresh first if necessary. Logout revokes refresh sessions, not existing JWTs. Clear local session even when network revocation fails, without claiming server revocation succeeded.
 
@@ -434,7 +434,7 @@ The current generated form has only username, role and status. It cannot supply 
 | Hidden selected user ID | URL `{id}` | `id`, UUID |
 | `#userName` / `username` | `username` | `username`; required |
 | `#userRole` / `role` | `role` | One backend role code, not display label; see section 3 |
-| `#userStatus` / `status` | Separate PATCH `{enabled: true/false}` | `enabled` maps to Active/Inactive |
+| `#userStatus` / `status` | `status: "ACTIVE"` or `"INACTIVE"` in POST/PUT | Response `status`; legacy `enabled` boolean also returned |
 | **Proposed new `#userDisplayName`** | `displayName` | `display_name`; required on create/update |
 | **Proposed new `#userInitialPassword`** | `initialPassword` on create only | Required on create; no password returned; never prefill/log |
 | **Proposed new process assignment editor** | `processAssignments: [{processId, activeOnShift}]` | Detailed assignment array; preserve all selections on update |
@@ -454,11 +454,11 @@ Assignment response fields: `processId`, `processName`, `stationId`, `stationNum
 | Existing action | API |
 | --- | --- |
 | Navigate users, render `#userTable` | `GET /api/v1/users` |
-| `#userSearch` | Client filter of loaded username/role; no server search query contract |
+| `#userSearch` | GET `/api/v1/users?search=...&page=0&size=20`; render `items` and use `totalElements` |
 | `#addUser` | Open form; no create yet |
 | `[data-edit-user]` | `GET /api/v1/users/{id}`, populate and preserve assignments/display name |
-| `#userForm` submit new | POST user, then PATCH status only if inactive was requested |
-| `#userForm` submit edit | PUT user, then PATCH status if changed |
+| `#userForm` submit new | POST user including `status` |
+| `#userForm` submit edit | PUT user including `status` |
 | `[data-delete-user]` | Confirm, `DELETE /api/v1/users/{id}`; disables account, not physical deletion |
 | `#cancelUser` | Close form, discard draft; no API |
 
@@ -474,6 +474,7 @@ POST /api/v1/users
 {
   "username":"operator.wash",
   "displayName":"Washing Process Manager",
+  "status":"ACTIVE",
   "initialPassword":"<temporary password entered by administrator>",
   "role":"PROCESS_MANAGER",
   "processAssignments":[
@@ -482,7 +483,7 @@ POST /api/v1/users
 }
 ```
 
-Create always returns `enabled: true`, `must_change_password: true`. An inactive create needs a subsequent status PATCH. These calls are not atomic; if status fails, explain that the account exists and is active, then retry status rather than create.
+Create saves status atomically with profile, role and assignments and returns `must_change_password: true`. Omitted status defaults to ACTIVE on POST and preserves the stored status on PUT. New accounts must change their initial password within seven days; see [the account expiry guide](API_COLLECTIONS_AND_ACCOUNT_EXPIRY.md).
 
 Update:
 
@@ -494,6 +495,7 @@ PUT /api/v1/users/<user UUID>
 {
   "username":"operator.wash",
   "displayName":"Washing Process Manager",
+  "status":"ACTIVE",
   "role":"PROCESS_MANAGER",
   "processAssignments":[
     {"processId":"11111111-1111-4111-8111-111111111111","activeOnShift":false}
@@ -501,17 +503,7 @@ PUT /api/v1/users/<user UUID>
 }
 ```
 
-Status:
-
-```http
-PATCH /api/v1/users/<user UUID>/status
-```
-
-```json
-{"enabled":false}
-```
-
-List/detail/save responses contain `id`, `username`, `display_name`, `enabled`, `must_change_password`, `created_at`, `role`, `processAssignments`. Map the current table's status to enabled; DELETE also returns a disabled record. The list still includes disabled accounts. Prefer keeping the row with Inactive status to accurately represent server state; if design hides them, filter explicitly.
+List/detail/save responses contain `id`, `username`, `display_name`, `status`, `enabled`, `must_change_password`, `created_at`, `role`, `processAssignments`. Map the current table's status to `status`; DELETE also returns a disabled record. The list still includes disabled accounts. Prefer keeping the row with Inactive status to accurately represent server state; if design hides them, filter explicitly.
 
 Other supported user APIs have **no v21 controls**:
 
@@ -556,7 +548,7 @@ Use #loginError, #message, #storageMessage, #tagMessage, #styleError for errors 
 
 400: invalid fields/module/count/mode/UID history or lockout edit. 401: refresh/relogin. 403: module/channel/scope/ownership denied; never show a fake saved state. 404: missing lookup. 409: business conflict/uniqueness; keep draft and refresh affected data. BUILT_IN_ROLE and ROLE_IN_USE are role-deletion conflicts. Some NOT_FOUND business errors currently use 409 rather than 404.
 
-Disable repeated submissions. Close/Cancel and row reordering do not mutate. After successful process/storage/tag mutations refresh resource lists and form lookups; after style saves reload styles/route; after user saves reload users; after role edits reload role list and auth/me and rebuild sidebar. Module changes apply to existing JWTs. Handle multi-request user save+status and module-create+role-save explicitly, retaining the successful first result for retry.
+Disable repeated submissions. Close/Cancel and row reordering do not mutate. After successful process/storage/tag mutations refresh resource lists and form lookups; after style saves reload styles/route; after user saves reload users; after role edits reload role list and auth/me and rebuild sidebar. Module changes apply to existing JWTs. User profile and status are saved in one request. Handle module-create+role-save explicitly, retaining the successful first result for retry.
 
 ## 14. Integration acceptance and remaining business-field work
 
@@ -564,4 +556,4 @@ Verify independent grants for every module; direct forbidden API calls must fail
 
 The roles/permissions APIs are implemented. Remaining v21 business-field gaps are style client, aggregate garment/planned-lot counts, weights, delivery date/manual creation date and general style update/delete behavior. They were not part of this role authorization implementation. Do not mark unsupported fields saved or store them silently in localStorage.
 
-Reference: [general guide](API_INTEGRATION_GUIDE.md), [role/module contracts](ROLE_MODULES_V21.md), [process assignment contracts](PROCESS_ASSIGNMENT_V5.md), [Postman instructions](postman/README.md), [142-request collection](postman/NW_Track.postman_collection.json). New APIs are in folder 19; no scripts are used. Set roleCode/moduleKey manually from responses.
+Reference: [general guide](API_INTEGRATION_GUIDE.md), [role/module contracts](ROLE_MODULES_V21.md), [process assignment contracts](PROCESS_ASSIGNMENT_V5.md), [Postman instructions](postman/README.md), [143-request collection](postman/NW_Track.postman_collection.json). New APIs are in folder 19; no scripts are used. Set roleCode/moduleKey manually from responses.

@@ -7,26 +7,30 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import java.util.*;
+import com.yesbee.nwtrack.shared.ApiPage;
+import com.yesbee.nwtrack.shared.Pages;
 
 @RestController @RequestMapping("/api/v1/access-roles")
 public class RoleController {
     private final JdbcTemplate jdbc;private final AccessPolicy access;
     public RoleController(JdbcTemplate jdbc,AccessPolicy access){this.jdbc=jdbc;this.access=access;}
-    @GetMapping public List<Map<String,Object>> list(){
-        var result=jdbc.queryForList("select id,code,name,description,built_in,active,pc_access,pad_access from roles where active order by built_in desc,name");
-        for(var row:result){UUID id=(UUID)row.remove("id");row.put("permissions",jdbc.queryForList("select permission from role_permissions where role_id=? order by permission",String.class,id));row.put("modules",jdbc.queryForList("select rm.module_key from role_modules rm join app_modules m on m.key=rm.module_key where rm.role_id=? and m.active order by rm.module_key",String.class,id));}
-        return result;
+    private static final String ROLE_SELECT="select id,code,name,description,built_in,active,pc_access,pad_access from roles";
+    @GetMapping public ApiPage<Map<String,Object>> list(){
+        return Pages.query(jdbc,ROLE_SELECT+" where active order by built_in desc,name,id").map(this::view);
     }
-    @GetMapping("/options") public List<Map<String,Object>> options(){return jdbc.queryForList("select code,name from roles where active order by name");}
+    private Map<String,Object> view(Map<String,Object> row){
+        UUID id=(UUID)row.remove("id");row.put("permissions",jdbc.queryForList("select permission from role_permissions where role_id=? order by permission",String.class,id));row.put("modules",jdbc.queryForList("select rm.module_key from role_modules rm join app_modules m on m.key=rm.module_key where rm.role_id=? and m.active order by rm.module_key",String.class,id));return row;
+    }
+    @GetMapping("/options") public ApiPage<Map<String,Object>> options(){return Pages.query(jdbc,"select code,name from roles where active order by name");}
     @GetMapping("/permissions") public Set<String> permissions(){return AccessPolicy.PERMISSIONS;}
     @PostMapping @Transactional public Map<String,Object> create(@Valid @RequestBody CreateRole r){
         String name=r.name().trim();if(name.isBlank())throw new IllegalArgumentException("Role name is required");
         UUID id=UUID.randomUUID();String code="CUSTOM_"+id.toString().replace("-","");
         jdbc.update("insert into roles(id,code,name,description,built_in,pc_access,pad_access) values (?,?,?,?,false,?,?)",id,code,name,name,r.pcAccess()==null||r.pcAccess(),Boolean.TRUE.equals(r.padAccess()));
         save(id,code,r.modules(),r.permissions(),r.pcAccess()==null||r.pcAccess(),Boolean.TRUE.equals(r.padAccess()));audit("CREATE_ROLE",id);
-        return list().stream().filter(x->code.equals(x.get("code"))).findFirst().orElseThrow();
+        return view(jdbc.queryForMap(ROLE_SELECT+" where id=?",id));
     }
-    @PutMapping("/{code}") @Transactional public List<Map<String,Object>> update(@PathVariable String code,@Valid @RequestBody RoleCommand r){
+    @PutMapping("/{code}") @Transactional public ApiPage<Map<String,Object>> update(@PathVariable String code,@Valid @RequestBody RoleCommand r){
         var role=jdbc.queryForMap("select id,pc_access,pad_access from roles where code=? and active for update",code);UUID id=(UUID)role.get("id");
         if(r.modules()==null&&r.permissions()==null)throw new IllegalArgumentException("modules or permissions is required");
         save(id,code,r.modules(),r.permissions(),r.pcAccess()==null?(Boolean)role.get("pc_access"):r.pcAccess(),r.padAccess()==null?(Boolean)role.get("pad_access"):r.padAccess());audit("UPDATE_ROLE",id);return list();

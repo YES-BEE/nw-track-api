@@ -34,7 +34,9 @@ class AuthControllerTest {
         var properties = new NwTrackProperties("Factory", security,
                 new NwTrackProperties.Transport("simulator", Duration.ofSeconds(1)));
 
-        var response = new AuthController(manager, encoder, properties,mock(AccessPolicy.class),mock(com.yesbee.nwtrack.users.ProcessAssignmentService.class))
+        var access=mock(AccessPolicy.class);
+        when(access.accountIdForUsername("operator1")).thenReturn(java.util.UUID.randomUUID().toString());
+        var response = new AuthController(manager, encoder, properties,access,mock(com.yesbee.nwtrack.users.ProcessAssignmentService.class))
                 .login(new AuthController.LoginRequest("operator1", "password","PAD"));
 
         assertThat(response.accessToken()).isEqualTo("signed.jwt");

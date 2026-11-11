@@ -31,7 +31,7 @@ public class ApiAccessConfiguration implements WebMvcConfigurer {
                         case "station-visits" -> access.station(jdbc.queryForObject("select station_id from station_visits where id=?",UUID.class,id));
                         case "process-executions" -> access.execution(access.actor(),id);
                         case "lots" -> access.lot(id);
-                        case "styles" -> access.style(id);
+                        case "styles" -> {if(!(path.endsWith("/lots")&&"PC".equals(access.clientType())&&modules.has("lots")))access.style(id);}
                         case "nfc-tags","nfc-assignments" -> access.tag(id);
                         case "transport-requests" -> access.lot(jdbc.queryForObject("select lot_id from transport_requests where id=?",UUID.class,id));
                     }

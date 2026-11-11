@@ -14,13 +14,14 @@ public class AccessPolicy {
     public AccessPolicy(JdbcTemplate jdbc) { this.jdbc=jdbc; }
     public Jwt token() { return (Jwt) SecurityContextHolder.getContext().getAuthentication().getPrincipal(); }
     public UUID actor() { return jdbc.queryForObject("select id from users where lower(username)=lower(?) and enabled",UUID.class,token().getSubject()); }
+    public String accountIdForUsername(String username){return jdbc.queryForObject("select id::text from users where lower(username)=lower(?)",String.class,username);}
     public String role() { return role(actor()); }
     public String role(UUID user) { return jdbc.queryForObject("select r.code from roles r join user_roles ur on ur.role_id=r.id where ur.user_id=?",String.class,user); }
     public boolean global(UUID user) { return Set.of("NW","ADMIN_IT","PRODUCTION_MANAGER","TOP_MANAGER").contains(role(user)); }
     public boolean global() { return global(actor()); }
     public void channel(String username,String channel) {
         if (!Set.of("PC","PAD").contains(channel)) throw new IllegalArgumentException("clientType must be PC or PAD");
-        Integer count=jdbc.queryForObject("select count(*) from users u join user_roles ur on ur.user_id=u.id join roles r on r.id=ur.role_id where lower(u.username)=lower(?) and u.enabled and r.active and case when ?='PC' then r.pc_access else r.pad_access end",Integer.class,username,channel);
+        Integer count=jdbc.queryForObject("select count(*) from users u join user_roles ur on ur.user_id=u.id join roles r on r.id=ur.role_id where lower(u.username)=lower(?) and u.enabled and (u.initial_password_expires_at is null or u.initial_password_expires_at>now()) and r.active and case when ?='PC' then r.pc_access else r.pad_access end",Integer.class,username,channel);
         if (count==null||count==0) throw new AccessDeniedException("Role does not allow this application channel");
     }
     public void require(String permission) {
@@ -61,8 +62,11 @@ public class AccessPolicy {
     }
     public void session(){
         channel(token().getSubject(),clientType());
+        String accountId=token().getClaimAsString("accountId");
+        if(accountId!=null&&!accountId.equals(actor().toString()))throw new AccessDeniedException("Account changed; log in again");
         if(token().getClaimAsStringList("roles")==null||!token().getClaimAsStringList("roles").contains(role()))throw new AccessDeniedException("Role changed; log in again");
     }
+    public boolean hasModule(String key){return modulesForUsername(token().getSubject()).stream().anyMatch(m->key.equals(m.get("key")));}
     public boolean ownStylesOnly(){
         if(role().equals("STYLE_CONFIGURATOR"))return true;
         return jdbc.queryForObject("select count(*) from role_modules rm join user_roles ur on ur.role_id=rm.role_id where ur.user_id=? and rm.module_key='newstyle'",Integer.class,actor())>0
@@ -111,6 +115,7 @@ public class AccessPolicy {
         return global()?"true":column+" in (select upa.process_id from user_process_assignments upa join processes p on p.id=upa.process_id join stations s on s.id=p.station_id where p.active and s.active and upa.user_id='"+actor()+"'::uuid)";
     }
     public String lotPredicate(String column) {
+        if("PC".equals(clientType())&&hasModule("lots"))return "true";
         return global()?"true":"exists(select 1 from station_visits scope_sv where scope_sv.lot_id="+column+" and "+stationPredicate("scope_sv.station_id")+")";
     }
     public void lot(UUID id) {

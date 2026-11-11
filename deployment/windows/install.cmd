@@ -15,7 +15,9 @@ goto run_script
 net session >nul 2>&1
 if %errorlevel% equ 0 goto run_script
 echo Requesting Windows Administrator approval...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~dp0install-admin.cmd' -Verb RunAs -ArgumentList '%*'"
+set "NWTRACK_INSTALL_ADMIN=%~dp0install-admin.cmd"
+set "NWTRACK_INSTALL_ARGS=%*"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$launch = @{FilePath=$env:NWTRACK_INSTALL_ADMIN; Verb='RunAs'}; if (-not [string]::IsNullOrWhiteSpace($env:NWTRACK_INSTALL_ARGS)) { $launch.ArgumentList=$env:NWTRACK_INSTALL_ARGS }; Start-Process @launch"
 if errorlevel 1 (
   echo Administrator approval was cancelled or could not be started.
   exit /b 1

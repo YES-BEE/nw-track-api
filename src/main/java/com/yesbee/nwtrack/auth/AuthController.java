@@ -29,7 +29,7 @@ public class AuthController {
         access.channel(auth.getName(),request.clientType());
         Instant now = Instant.now(); Instant expires = now.plus(properties.security().accessTokenTtl());
         List<String> roles = auth.getAuthorities().stream().map(a -> a.getAuthority().replaceFirst("^ROLE_", "")).toList();
-        JwtClaimsSet claims = JwtClaimsSet.builder().issuer(properties.security().issuer()).issuedAt(now).expiresAt(expires).subject(auth.getName()).claim("roles", roles).claim("clientType",request.clientType()).build();
+        JwtClaimsSet claims = JwtClaimsSet.builder().issuer(properties.security().issuer()).issuedAt(now).expiresAt(expires).subject(auth.getName()).claim("accountId",access.accountIdForUsername(auth.getName())).claim("roles", roles).claim("clientType",request.clientType()).build();
         JwsHeader header = JwsHeader.with(MacAlgorithm.HS256).build();
         String token = encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
         return new TokenResponse(token, "Bearer", properties.security().accessTokenTtl().toSeconds(), auth.getName(), roles,assignments.forUsername(auth.getName()),access.modulesForUsername(auth.getName()));

@@ -12,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import com.yesbee.nwtrack.shared.ApiPage;
+import com.yesbee.nwtrack.shared.Pages;
 
 @RestController @RequestMapping("/api/v1") @Tag(name="NFC asset administration")
 @PreAuthorize("isAuthenticated()")
@@ -20,13 +22,13 @@ public class AssetAdministrationController {
     public AssetAdministrationController(JdbcTemplate jdbc,NfcAssetService nfc,ActorResolver actors,ConfigurationService configurations,com.yesbee.nwtrack.auth.AccessPolicy access){this.jdbc=jdbc;this.nfc=nfc;this.actors=actors;this.configurations=configurations;this.access=access;}
 
     @PostMapping("/machines") @Transactional public Map<String,Object> createMachine(@Valid @RequestBody MachineCommand r,@AuthenticationPrincipal Jwt jwt){return saveMachine(null,r,actors.id(jwt));}
-    @GetMapping("/machines") @PreAuthorize("isAuthenticated()") public List<Map<String,Object>> machines(){return jdbc.queryForList(MACHINE_SELECT+" where "+access.processPredicate("m.process_id")+" order by s.code,m.name").stream().map(this::machineView).toList();}
+    @GetMapping("/machines") @PreAuthorize("isAuthenticated()") public ApiPage<Map<String,Object>> machines(){return Pages.query(jdbc,MACHINE_SELECT+" where "+access.processPredicate("m.process_id")+" order by s.code,m.name").map(this::machineView);}
     @GetMapping("/machines/{id}") @PreAuthorize("isAuthenticated()") public Map<String,Object> machine(@PathVariable UUID id){return machineView(one(MACHINE_SELECT+" where m.id=?",id));}
     @PutMapping("/machines/{id}") @Transactional public Map<String,Object> updateMachine(@PathVariable UUID id,@Valid @RequestBody MachineCommand r,@AuthenticationPrincipal Jwt jwt){return saveMachine(id,r,actors.id(jwt));}
     @PatchMapping("/machines/{id}/status") public Map<String,Object> machineStatus(@PathVariable UUID id,@Valid @RequestBody MachineStatus r){jdbc.update("update machines set status=?,active=?<>'INACTIVE',version=version+1 where id=?",r.status(),r.status(),id);return machine(id);}
 
     @PostMapping("/storage-areas") @Transactional public Map<String,Object> createArea(@Valid @RequestBody AreaCommand r,@AuthenticationPrincipal Jwt jwt){return saveArea(null,r,actors.id(jwt));}
-    @GetMapping("/storage-areas") @PreAuthorize("isAuthenticated()") public List<Map<String,Object>> areas(){return jdbc.queryForList(AREA_SELECT+" where "+access.stationPredicate("sa.station_id")+" order by s.code,sa.code").stream().map(this::areaView).toList();}
+    @GetMapping("/storage-areas") @PreAuthorize("isAuthenticated()") public ApiPage<Map<String,Object>> areas(){return Pages.query(jdbc,AREA_SELECT+" where "+access.stationPredicate("sa.station_id")+" order by s.code,sa.code").map(this::areaView);}
     @PutMapping("/storage-areas/{id}") @Transactional public Map<String,Object> updateArea(@PathVariable UUID id,@Valid @RequestBody AreaCommand r,@AuthenticationPrincipal Jwt jwt){return saveArea(id,r,actors.id(jwt));}
     @PatchMapping("/storage-areas/{id}/status") @Transactional public Map<String,Object> areaStatus(@PathVariable UUID id,@RequestBody ActiveStatus r,@AuthenticationPrincipal Jwt jwt){if(!r.active())return deleteArea(id,jwt);jdbc.update("update storage_areas set active=true,version=version+1 where id=?",id);return area(id);}
 
@@ -36,9 +38,9 @@ public class AssetAdministrationController {
     @PostMapping("/nfc-assignments") public Map<String,Object> register(@Valid @RequestBody NfcAssignment r,@AuthenticationPrincipal Jwt jwt){access.asset(r.assetType(),r.assetId());UUID id=nfc.registerAndAssign(r.uid(),r.assetType(),r.assetId(),actors.id(jwt),r.reason());return tag(id);}
     @PutMapping("/nfc-assignments/{tagId}") public Map<String,Object> reassign(@PathVariable UUID tagId,@Valid @RequestBody NfcReassignment r,@AuthenticationPrincipal Jwt jwt){access.asset(r.assetType(),r.assetId());nfc.assign(tagId,r.assetType(),r.assetId(),actors.id(jwt),r.reason());return tag(tagId);}
     @DeleteMapping("/nfc-assignments/{tagId}") public void deactivate(@PathVariable UUID tagId,@RequestBody @Valid Reason r,@AuthenticationPrincipal Jwt jwt){nfc.unassign(tagId,actors.id(jwt),r.reason());}
-    @GetMapping("/nfc-assignments/{tagId}/history") public List<Map<String,Object>> history(@PathVariable UUID tagId){return jdbc.queryForList("select asset_type,asset_id,assigned_by,assigned_at,unassigned_by,unassigned_at,reason from nfc_assignment_history where nfc_tag_id=? order by assigned_at",tagId);}
+    @GetMapping("/nfc-assignments/{tagId}/history") public ApiPage<Map<String,Object>> history(@PathVariable UUID tagId){return Pages.query(jdbc,"select asset_type,asset_id,assigned_by,assigned_at,unassigned_by,unassigned_at,reason from nfc_assignment_history where nfc_tag_id=? order by assigned_at,id",tagId);}
 
-    @GetMapping("/storage-areas/{areaId}/units") public List<Map<String,Object>> units(@PathVariable UUID areaId){return jdbc.queryForList("select id,station_id,storage_area_id,code,name,active,version from storage_locations where storage_area_id=? order by code",areaId);}
+    @GetMapping("/storage-areas/{areaId}/units") public ApiPage<Map<String,Object>> units(@PathVariable UUID areaId){return Pages.query(jdbc,"select id,station_id,storage_area_id,code,name,active,version from storage_locations where storage_area_id=? order by code",areaId);}
     @GetMapping("/storage-units/{id}") public Map<String,Object> getUnit(@PathVariable UUID id){return unit(id);}
     @GetMapping("/storage-areas/{id}") public Map<String,Object> getArea(@PathVariable UUID id){return area(id);}
     @DeleteMapping("/storage-areas/{id}") @Transactional public Map<String,Object> deleteArea(@PathVariable UUID id,@AuthenticationPrincipal Jwt jwt){

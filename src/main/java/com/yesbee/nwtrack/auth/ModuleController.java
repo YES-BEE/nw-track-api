@@ -6,12 +6,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import java.util.*;
+import com.yesbee.nwtrack.shared.ApiPage;
+import com.yesbee.nwtrack.shared.Pages;
 
 @RestController @RequestMapping("/api/v1/modules")
 public class ModuleController {
     private final JdbcTemplate jdbc;private final ModuleAccessService modules;private final AccessPolicy access;
     public ModuleController(JdbcTemplate jdbc,ModuleAccessService modules,AccessPolicy access){this.jdbc=jdbc;this.modules=modules;this.access=access;}
-    @GetMapping public List<Map<String,Object>> list(){return jdbc.queryForList("select key,name,built_in,active from app_modules where active order by built_in desc,key");}
+    @GetMapping public ApiPage<Map<String,Object>> list(){return Pages.query(jdbc,"select key,name,built_in,active from app_modules where active order by built_in desc,key");}
     @PostMapping @Transactional public Map<String,Object> create(@Valid @RequestBody ModuleCommand r){
         String name=r.name().trim();if(name.isBlank())throw new IllegalArgumentException("Module name is required");
         String key="custom_"+UUID.randomUUID().toString().replace("-","");

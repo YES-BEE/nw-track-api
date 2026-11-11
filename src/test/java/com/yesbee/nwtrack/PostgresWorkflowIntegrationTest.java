@@ -31,6 +31,7 @@ class PostgresWorkflowIntegrationTest {
     @org.springframework.boot.test.web.server.LocalServerPort int port;
     @Autowired com.fasterxml.jackson.databind.ObjectMapper json;
     @Autowired com.yesbee.nwtrack.notification.NotificationService notifications;
+    @Autowired org.springframework.security.crypto.password.PasswordEncoder passwords;
     private record Reply(int status,com.fasterxml.jackson.databind.JsonNode body){}
     private Reply call(String method,String path,Object body,String token)throws Exception{
         var builder=java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://localhost:"+port+path)).header("Content-Type","application/json");
@@ -40,13 +41,103 @@ class PostgresWorkflowIntegrationTest {
         return new Reply(reply.statusCode(),reply.body().isBlank()?json.nullNode():json.readTree(reply.body()));
     }
     private String login(String user,String channel)throws Exception{
-        Reply result=call("POST","/api/v1/auth/login",java.util.Map.of("username",user,"password","ChangeMe123!","clientType",channel),null);
-        assertThat(result.status()).as(result.body().toString()).isEqualTo(200);return result.body().get("accessToken").asText();
+        String hash=jdbc.queryForObject("select password_hash from users where username=?",String.class,user);
+        String password=passwords.matches("ChangeMe123!",hash)?"ChangeMe123!":"ReadyForWork123!";
+        Reply result=call("POST","/api/v1/auth/login",java.util.Map.of("username",user,"password",password,"clientType",channel),null);
+        assertThat(result.status()).as(result.body().toString()).isEqualTo(200);String token=result.body().get("accessToken").asText();
+        if(jdbc.queryForObject("select initial_password_expires_at is not null from users where username=?",Boolean.class,user))assertThat(call("POST","/api/v1/auth/change-password",java.util.Map.of("currentPassword",password,"newPassword","ReadyForWork123!"),token).status()).isEqualTo(200);
+        return token;
+    }
+
+    @Test void userStatusIsManagedThroughCreateAndUpdateOnly()throws Exception{
+        String admin=login("admin","PC"),name="status-"+UUID.randomUUID();
+        Reply created=call("POST","/api/v1/users",java.util.Map.of("username",name,"displayName","Status test","initialPassword","ChangeMe123!","role","PRODUCTION_MANAGER"),admin);
+        assertThat(created.status()).isEqualTo(200);
+        assertThat(created.body().get("status").asText()).isEqualTo("ACTIVE");
+        String path="/api/v1/users/"+created.body().get("id").asText();
+        var update=new java.util.HashMap<String,Object>(java.util.Map.of("username",name,"displayName","Status test","role","PRODUCTION_MANAGER","processAssignments",List.of(),"status","INACTIVE"));
+        Reply inactive=call("PUT",path,update,admin);
+        assertThat(inactive.status()).isEqualTo(200);
+        assertThat(inactive.body().get("status").asText()).isEqualTo("INACTIVE");
+        assertThat(inactive.body().get("enabled").asBoolean()).isFalse();
+        update.remove("status");
+        assertThat(call("PUT",path,update,admin).body().get("status").asText()).isEqualTo("INACTIVE");
+        update.put("status","ACTIVE");
+        assertThat(call("PUT",path,update,admin).body().get("status").asText()).isEqualTo("ACTIVE");
+        update.put("status","UNKNOWN");
+        assertThat(call("PUT",path,update,admin).status()).isEqualTo(400);
+        assertThat(call("PATCH",path+"/status",java.util.Map.of("enabled",false),admin).status()).isEqualTo(404);
+    }
+
+    @Test void pendingAccountsExpireAndUsernameCanBeRecreatedWithoutReusingOldTokens()throws Exception{
+        String admin=login("admin","PC"),name="expiry-"+UUID.randomUUID();
+        var command=new java.util.HashMap<String,Object>(java.util.Map.of("username",name,"displayName","Expiry test","initialPassword","ChangeMe123!","role","PRODUCTION_MANAGER","status","INACTIVE"));
+        Reply created=call("POST","/api/v1/users",command,admin);
+        assertThat(created.status()).as(created.body().toString()).isEqualTo(200);
+        UUID id=UUID.fromString(created.body().get("id").asText());
+        assertThat(created.body().get("enabled").asBoolean()).isFalse();
+        assertThat(created.body().get("status").asText()).isEqualTo("INACTIVE");
+        assertThat(jdbc.queryForObject("select initial_password_expires_at-created_at=interval '7 days' from users where id=?",Boolean.class,id)).isTrue();
+        assertThat(call("POST","/api/v1/auth/login",java.util.Map.of("username",name,"password","ChangeMe123!","clientType","PC"),null).status()).isEqualTo(401);
+        assertThat(call("PUT","/api/v1/users/"+id,java.util.Map.of("username",name,"displayName","Active now","role","PRODUCTION_MANAGER","processAssignments",List.of(),"status","ACTIVE"),admin).body().get("enabled").asBoolean()).isTrue();
+        Reply logged=call("POST","/api/v1/auth/login",java.util.Map.of("username",name,"password","ChangeMe123!","clientType","PC"),null);
+        String oldToken=logged.body().get("accessToken").asText();
+        assertThat(call("GET","/api/v1/trolleys",null,oldToken).status()).isEqualTo(403);
+        var deadline=jdbc.queryForObject("select initial_password_expires_at from users where id=?",java.time.OffsetDateTime.class,id);
+        assertThat(call("PUT","/api/v1/users/"+id+"/password",java.util.Map.of("temporaryPassword","AnotherTemp123!"),admin).status()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("select initial_password_expires_at from users where id=?",java.time.OffsetDateTime.class,id)).isEqualTo(deadline);
+        jdbc.update("update users set initial_password_expires_at=now()-interval '1 second' where id=?",id);
+        assertThat(call("POST","/api/v1/auth/login",java.util.Map.of("username",name,"password","AnotherTemp123!","clientType","PC"),null).status()).isEqualTo(401);
+        assertThat(call("POST","/api/v1/auth/change-password",java.util.Map.of("currentPassword","AnotherTemp123!","newPassword","ReadyForWork123!"),oldToken).status()).isEqualTo(403);
+        command.put("status","ACTIVE");
+        Reply recreated=call("POST","/api/v1/users",command,admin);
+        assertThat(recreated.status()).as(recreated.body().toString()).isEqualTo(200);
+        assertThat(recreated.body().get("id").asText()).isNotEqualTo(id.toString());
+        assertThat(call("GET","/api/v1/auth/me",null,oldToken).status()).isEqualTo(403);
+        String token=login(name,"PC");
+        assertThat(call("PUT","/api/v1/users/"+recreated.body().get("id").asText()+"/password",java.util.Map.of("temporaryPassword","LaterReset123!"),admin).status()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("select initial_password_expires_at is null from users where username=?",Boolean.class,name)).isTrue();
+        assertThat(call("GET","/api/v1/trolleys",null,token).status()).isEqualTo(200);
+    }
+
+    @Test void postgresPagingCountsFilteredRowsAndTreatsSearchAsLiteral(){
+        String sql="select * from (values (1,'Alpha'),(2,'aLPha two'),(3,'100%_literal'),(4,'Beta')) sample(id,name) order by id";
+        var first=com.yesbee.nwtrack.shared.Pages.query(jdbc,new com.yesbee.nwtrack.shared.Pages.Options(0,1,"alpha"),sql);
+        var second=com.yesbee.nwtrack.shared.Pages.query(jdbc,new com.yesbee.nwtrack.shared.Pages.Options(1,1,"alpha"),sql);
+        assertThat(first.totalElements()).isEqualTo(2);assertThat(first.items().getFirst().get("id")).isEqualTo(1);
+        assertThat(second.items().getFirst().get("id")).isEqualTo(2);
+        assertThat(first.items().getFirst()).doesNotContainKey("__page_order");
+        var literal=com.yesbee.nwtrack.shared.Pages.query(jdbc,new com.yesbee.nwtrack.shared.Pages.Options(0,20,"%_"),sql);
+        assertThat(literal.totalElements()).isEqualTo(1);assertThat(literal.items().getFirst().get("id")).isEqualTo(3);
+        assertThat(com.yesbee.nwtrack.shared.Pages.query(jdbc,new com.yesbee.nwtrack.shared.Pages.Options(0,20,"' OR true --"),sql).items()).isEmpty();
+        assertThat(com.yesbee.nwtrack.shared.Pages.query(jdbc,new com.yesbee.nwtrack.shared.Pages.Options(10,20,"alpha"),sql).totalElements()).isEqualTo(2);
+    }
+
+    @Test void dedicatedModulesGrantTrolleysAndLotsWithoutGrantingStyleEditing()throws Exception{
+        String admin=login("admin","PC"),suffix=UUID.randomUUID().toString();
+        for(String role:List.of("NW","ADMIN_IT","PRODUCTION_MANAGER","STYLE_CONFIGURATOR")){
+            String name=role+suffix;
+            assertThat(call("POST","/api/v1/users",java.util.Map.of("username",name,"displayName",name,"initialPassword","ChangeMe123!","role",role),admin).status()).isEqualTo(200);
+            String token=login(name,"PC");
+            assertThat(call("GET","/api/v1/lots?size=1",null,token).status()).isEqualTo(200);
+            assertThat(call("GET","/api/v1/trolleys",null,token).status()).isEqualTo(role.equals("STYLE_CONFIGURATOR")?403:200);
+        }
+        UUID actor=jdbc.queryForObject("select id from users where username='admin'",UUID.class),station=UUID.randomUUID(),process=UUID.randomUUID();
+        jdbc.update("insert into stations(id,code,name) values (?,?,?)",station,"LM-S-"+suffix,"Lot station");
+        jdbc.update("insert into processes(id,code,name,station_id) values (?,?,?,?)",process,"LM-P-"+suffix,"Lot process",station);
+        UUID style=production.createConfiguredStyle("LM-"+suffix,"Released style",actor,List.of(process));production.release(style);
+        String creator=login("STYLE_CONFIGURATOR"+suffix,"PC");
+        assertThat(call("GET","/api/v1/styles/"+style,null,creator).status()).isEqualTo(403);
+        Reply lot=call("POST","/api/v1/styles/"+style+"/lots",java.util.Map.of("lotNumber","LM-L-"+suffix,"quantity",10),creator);
+        assertThat(lot.status()).as(lot.body().toString()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/styles/"+style+"/lots",null,creator).body().get("totalElements").asInt()).isEqualTo(1);
+        assertThat(call("POST","/api/v1/lots/"+lot.body().get("id").asText()+"/cancel",java.util.Map.of("reason","Test cancellation"),creator).status()).isEqualTo(200);
+        assertThat(call("POST","/api/v1/styles/"+style+"/release",null,creator).status()).isEqualTo(403);
     }
 
     @Test void v21ModuleIsolationDynamicRolesOwnershipAndScopedLookups()throws Exception{
         String admin=login("admin","PC"),suffix=UUID.randomUUID().toString().substring(0,8);
-        assertThat(call("GET","/api/v1/modules",null,admin).body().size()).isGreaterThanOrEqualTo(9);
+        assertThat(call("GET","/api/v1/modules",null,admin).body().get("items").size()).isGreaterThanOrEqualTo(9);
         assertThat(call("DELETE","/api/v1/access-roles/NW",null,admin).status()).isEqualTo(409);
         assertThat(call("PUT","/api/v1/access-roles/NW",java.util.Map.of("modules",List.of("dashboard")),admin).status()).isEqualTo(400);
         Reply module=call("POST","/api/v1/modules",java.util.Map.of("name","Custom "+suffix),admin);
@@ -62,9 +153,9 @@ class PostgresWorkflowIntegrationTest {
         Reply user=call("POST","/api/v1/users",java.util.Map.of("username",username,"displayName","Custom","initialPassword","ChangeMe123!","role",code,"processAssignments",List.of(java.util.Map.of("processId",process.toString(),"activeOnShift",true))),admin);
         assertThat(user.status()).isEqualTo(200);String userId=user.body().get("id").asText(),token=login(username,"PC");
         Reply me=call("GET","/api/v1/auth/me",null,token);assertThat(me.status()).isEqualTo(200);assertThat(me.body().get("modules").size()).isEqualTo(2);
-        assertThat(call("GET","/api/v1/processes",null,token).body().size()).isEqualTo(1);
+        assertThat(call("GET","/api/v1/processes",null,token).body().get("items").size()).isEqualTo(1);
         assertThat(call("GET","/api/v1/processes/"+outside,null,token).status()).isEqualTo(403);
-        assertThat(call("GET","/api/v1/ui/lookups",null,token).body().get("processes").size()).isEqualTo(1);
+        assertThat(call("GET","/api/v1/ui/lookups",null,token).body().get("processes").get("items").size()).isEqualTo(1);
         String newUid="NEW-P-"+suffix;
         assertThat(call("POST","/api/v1/nfc-tags",java.util.Map.of("name",newUid,"uid",newUid),admin).status()).isEqualTo(200);
         assertThat(call("POST","/api/v1/processes",java.util.Map.of("name","Forbidden","stationNumber","OUT-"+suffix,"nfcMode","PROCESS","nfcUid",newUid),token).status()).isEqualTo(403);
@@ -102,13 +193,13 @@ class PostgresWorkflowIntegrationTest {
         String author="author-"+suffix,otherAuthor="other-author-"+suffix;
         for(String name:List.of(author,otherAuthor))assertThat(call("POST","/api/v1/users",java.util.Map.of("username",name,"displayName",name,"initialPassword","ChangeMe123!","role","STYLE_CONFIGURATOR"),admin).status()).isEqualTo(200);
         String authorToken=login(author,"PC"),otherToken=login(otherAuthor,"PC");
-        assertThat(call("GET","/api/v1/ui/lookups",null,authorToken).body().get("processes").size()).isGreaterThanOrEqualTo(2);
+        assertThat(call("GET","/api/v1/ui/lookups",null,authorToken).body().get("processes").get("items").size()).isGreaterThanOrEqualTo(2);
         assertThat(call("GET","/api/v1/processes",null,authorToken).status()).isEqualTo(403);
         Reply style=call("POST","/api/v1/styles",java.util.Map.of("styleNumber","OWN-"+suffix,"description","Own","processIds",List.of(process.toString())),authorToken);
         assertThat(style.status()).as(style.body().toString()).isEqualTo(200);String styleId=style.body().get("id").asText();
-        assertThat(call("GET","/api/v1/styles",null,authorToken).body().size()).isEqualTo(1);
+        assertThat(call("GET","/api/v1/styles",null,authorToken).body().get("items").size()).isEqualTo(1);
         assertThat(call("GET","/api/v1/styles/"+styleId+"/derived-route",null,authorToken).status()).isEqualTo(200);
-        assertThat(call("GET","/api/v1/styles",null,otherToken).body().size()).isZero();
+        assertThat(call("GET","/api/v1/styles",null,otherToken).body().get("items").size()).isZero();
         assertThat(call("GET","/api/v1/styles/"+styleId,null,otherToken).status()).isEqualTo(403);
         assertThat(call("GET","/api/v1/styles/"+styleId+"/derived-route",null,otherToken).status()).isEqualTo(403);
         assertThat(call("PUT","/api/v1/styles/"+styleId+"/processes",List.of(outside.toString()),authorToken).status()).isEqualTo(403);
@@ -135,7 +226,8 @@ class PostgresWorkflowIntegrationTest {
         org.flywaydb.core.Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).load().migrate();
         assertThat(upgradeJdbc.queryForObject("select role_id from user_roles where user_id=?",UUID.class,user)).isEqualTo(oldRole);
         assertThat(upgradeJdbc.queryForObject("select code from roles where id=?",String.class,oldRole)).isEqualTo("STYLE_CONFIGURATOR");
-        assertThat(upgradeJdbc.queryForList("select module_key from role_modules where role_id=?",String.class,oldRole)).containsExactly("newstyle");
+        assertThat(upgradeJdbc.queryForList("select module_key from role_modules where role_id=?",String.class,oldRole)).containsExactlyInAnyOrder("newstyle","lots");
+        assertThat(upgradeJdbc.queryForObject("select initial_password_expires_at is null from users where id=?",Boolean.class,user)).isTrue();
         assertThat(upgradeJdbc.queryForList("select permission from role_permissions where role_id=?",String.class,oldRole)).containsExactly("READ");
         assertThat(upgradeJdbc.queryForObject("select pad_access from roles where id=?",Boolean.class,oldRole)).isFalse();
         assertThat(upgradeJdbc.queryForObject("select pc_access from roles where code='SUPERVISOR'",Boolean.class)).isTrue();
@@ -206,9 +298,9 @@ class PostgresWorkflowIntegrationTest {
         Reply user=call("POST","/api/v1/users",java.util.Map.of("username",username,"displayName","Process manager","initialPassword","ChangeMe123!","role","PROCESS_MANAGER","processAssignments",assignments),admin);
         assertThat(user.status()).as(user.body().toString()).isEqualTo(200);assertThat(user.body().get("processAssignments").size()).isEqualTo(2);
         String pm=login(username,"PAD");
-        Reply own=call("GET","/api/v1/stations",null,pm);assertThat(own.status()).isEqualTo(200);assertThat(own.body().size()).isEqualTo(2);
+        Reply own=call("GET","/api/v1/stations",null,pm);assertThat(own.status()).isEqualTo(200);assertThat(own.body().get("items").size()).isEqualTo(2);
         assertThat(call("GET","/api/v1/users",null,pm).status()).isEqualTo(403);
-        assertThat(call("GET","/api/v1/access-roles",null,admin).body().size()).isEqualTo(7);
+        assertThat(call("GET","/api/v1/access-roles",null,admin).body().get("items").size()).isEqualTo(7);
         assertThat(call("POST","/api/v1/access-roles",java.util.Map.of("code","CUSTOM"),admin).status()).isEqualTo(400);
         Reply supervisor=call("POST","/api/v1/users",java.util.Map.of("username","sup-"+suffix,"displayName","Supervisor","initialPassword","ChangeMe123!","role","SUPERVISOR"),admin);
         assertThat(supervisor.status()).isEqualTo(200);
@@ -316,6 +408,7 @@ class PostgresWorkflowIntegrationTest {
         assertThat(user.body().has("stations")).isFalse();
         Reply token=call("POST","/api/v1/auth/login",java.util.Map.of("username",username,"password","ChangeMe123!","clientType","PAD"),null);assertThat(token.status()).isEqualTo(200);
         assertThat(token.body().get("processAssignments").get(0).get("stationId").asText()).isEqualTo(oldStation);String pm=token.body().get("accessToken").asText();
+        assertThat(call("POST","/api/v1/auth/change-password",java.util.Map.of("currentPassword","ChangeMe123!","newPassword","ReadyForWork123!"),pm).status()).isEqualTo(200);
         processBody.put("stationNumber","MOVED-"+suffix);processBody.put("name","Edited mock process");
         Reply moved=call("PUT","/api/v1/processes/"+processId,processBody,admin);assertThat(moved.status()).as(moved.body().toString()).isEqualTo(200);
         assertThat(moved.body().get("code").asText()).isEqualTo(code);String station=moved.body().get("station_id").asText();assertThat(station).isNotEqualTo(oldStation);
@@ -346,8 +439,8 @@ class PostgresWorkflowIntegrationTest {
         assertThat(call("DELETE","/api/v1/nfc-tags/"+tags.get(3),null,admin).body().get("status").asText()).isEqualTo("DELETED");
         assertThat(call("POST","/api/v1/processes",java.util.Map.of("name","Deleted tag rejected","stationNumber","ORPHAN-"+suffix,"nfcMode","PROCESS","nfcUid",uids[3]),admin).status()).isEqualTo(404);
         assertThat(jdbc.queryForObject("select count(*) from stations where code=?",Integer.class,"ORPHAN-"+suffix)).isZero();
-        assertThat(call("GET","/api/v1/nfc-tags/statuses",null,admin).body().size()).isEqualTo(2);
-        Reply available=call("GET","/api/v1/nfc-tags?status=ACTIVE&assigned=false",null,admin);for(var tag:available.body())assertThat(tag.get("id").asText()).isNotEqualTo(tags.get(3));
+        assertThat(call("GET","/api/v1/nfc-tags/statuses",null,admin).body().get("items").size()).isEqualTo(2);
+        Reply available=call("GET","/api/v1/nfc-tags?status=ACTIVE&assigned=false",null,admin);for(var tag:available.body().get("items"))assertThat(tag.get("id").asText()).isNotEqualTo(tags.get(3));
         assertThat(call("PATCH","/api/v1/nfc-tags/"+tags.get(3)+"/status",java.util.Map.of("status","ACTIVE"),admin).body().get("status").asText()).isEqualTo("ACTIVE");
         String deviceId=deviceProcess.body().get("devices").get(0).get("id").asText();
         assertThat(call("PUT","/api/v1/machines/"+deviceId,java.util.Map.of("processId",deviceProcessId,"name","Device renamed","nfcUid",uids[1]),admin).status()).isEqualTo(200);

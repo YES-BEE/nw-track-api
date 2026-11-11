@@ -13,3 +13,5 @@ certs/
 *.jks
 *.p12
 *.key
+logs/
+support-bundles/

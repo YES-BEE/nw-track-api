@@ -16,7 +16,7 @@ public class DatabaseUserDetailsService implements UserDetailsService {
     public DatabaseUserDetailsService(JdbcTemplate jdbc) { this.jdbc = jdbc; }
 
     @Override public UserDetails loadUserByUsername(String username) {
-        List<AccountRow> accounts = jdbc.query("select id, username, password_hash, enabled from users where lower(username)=lower(?)",
+        List<AccountRow> accounts = jdbc.query("select id, username, password_hash, enabled from users where lower(username)=lower(?) and (initial_password_expires_at is null or initial_password_expires_at>now())",
                 (rs, n) -> new AccountRow(rs.getObject("id").toString(), rs.getString("username"), rs.getString("password_hash"), rs.getBoolean("enabled")), username.trim());
         if (accounts.isEmpty()) throw new UsernameNotFoundException("Invalid username or password");
         AccountRow account = accounts.getFirst();

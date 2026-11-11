@@ -1,7 +1,7 @@
 {
     "info":  {
                  "name":  "NW Track - Manual API requests",
-                 "description":  "142 normal requests in 19 folders. No scripts. v21 supports independent module grants, custom roles, custom module placeholders and STYLE_CONFIGURATOR create/view-own. Use modules from login or auth/me for the sidebar. Copy returned roleCode, moduleKey, tokens and UUIDs manually. See ../ROLE_MODULES_V21.md and ../UI_V21_API_INTEGRATION.md.",
+                 "description":  "143 normal requests in 20 folders. Collections return {items,page,size,totalElements}; use search/page/size. New users must change the initial password within seven days. See ../API_COLLECTIONS_AND_ACCOUNT_EXPIRY.md. No scripts. v21 supports independent module grants, custom roles, custom module placeholders and STYLE_CONFIGURATOR create/view-own. Use modules from login or auth/me for the sidebar. Copy returned roleCode, moduleKey, tokens and UUIDs manually. See ../ROLE_MODULES_V21.md and ../UI_V21_API_INTEGRATION.md.",
                  "schema":  "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
              },
     "auth":  {
@@ -15,6 +15,35 @@
                             ]
              },
     "item":  [
+                 {
+                     "name": "20 Trolley and lot module additions",
+                     "item": [
+                         {
+                             "name": "Search all lots with pagination",
+                             "request": {
+                                 "method": "GET",
+                                 "header": [{"key":"Accept","value":"application/json"}],
+                                 "url": {
+                                     "raw":"{{baseUrl}}/api/v1/lots?page=0&size=20&search=LOT",
+                                     "host":["{{baseUrl}}"],
+                                     "path":["api","v1","lots"],
+                                     "query":[{"key":"page","value":"0"},{"key":"size","value":"20"},{"key":"search","value":"LOT"}]
+                                 },
+                                 "description":"Requires the lots module on PC. Returns items, page, size and totalElements."
+                             }
+                         },
+                         {
+                             "name": "Update trolley configuration",
+                             "request": {
+                                 "method":"PUT",
+                                 "header":[{"key":"Accept","value":"application/json"},{"key":"Content-Type","value":"application/json"}],
+                                 "url":{"raw":"{{baseUrl}}/api/v1/trolleys/{{trolleyId}}","host":["{{baseUrl}}"],"path":["api","v1","trolleys","{{trolleyId}}"]},
+                                 "body":{"mode":"raw","raw":"{\n  \"code\": \"TROLLEY-01\"\n}","options":{"raw":{"language":"json"}}},
+                                 "description":"Requires the trolleys module on PC. Use the existing status PATCH to activate or deactivate."
+                             }
+                         }
+                     ]
+                 },
                  {
                      "name":  "01 Authentication and token generation",
                      "item":  [
@@ -402,7 +431,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\r\n    \"username\":  \"pm-{{$timestamp}}\",\r\n    \"displayName\":  \"Process Manager\",\r\n    \"initialPassword\":  \"{{newUserPassword}}\",\r\n    \"role\":  \"PROCESS_MANAGER\",\r\n    \"processAssignments\":  [\r\n                               {\r\n                                   \"activeOnShift\":  true,\r\n                                   \"processId\":  \"{{processId}}\"\r\n                               }\r\n                           ]\r\n}",
+                                                                   "raw":  "{\r\n    \"username\":  \"pm-{{$timestamp}}\",\r\n    \"status\": \"ACTIVE\",\r\n    \"displayName\":  \"Process Manager\",\r\n    \"initialPassword\":  \"{{newUserPassword}}\",\r\n    \"role\":  \"PROCESS_MANAGER\",\r\n    \"processAssignments\":  [\r\n                               {\r\n                                   \"activeOnShift\":  true,\r\n                                   \"processId\":  \"{{processId}}\"\r\n                               }\r\n                           ]\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -539,45 +568,6 @@
                                                   }
                                   },
                                   {
-                                      "name":  "PATCH /api/v1/users/{id}/status",
-                                      "request":  {
-                                                      "method":  "PATCH",
-                                                      "header":  [
-                                                                     {
-                                                                         "key":  "Accept",
-                                                                         "value":  "application/json"
-                                                                     },
-                                                                     {
-                                                                         "key":  "Content-Type",
-                                                                         "value":  "application/json"
-                                                                     }
-                                                                 ],
-                                                      "url":  {
-                                                                  "raw":  "{{baseUrl}}/api/v1/users/{{userId}}/status",
-                                                                  "host":  [
-                                                                               "{{baseUrl}}"
-                                                                           ],
-                                                                  "path":  [
-                                                                               "api",
-                                                                               "v1",
-                                                                               "users",
-                                                                               "{{userId}}",
-                                                                               "status"
-                                                                           ]
-                                                              },
-                                                      "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
-                                                      "body":  {
-                                                                   "mode":  "raw",
-                                                                   "raw":  "{\r\n    \"enabled\":  true\r\n}",
-                                                                   "options":  {
-                                                                                   "raw":  {
-                                                                                               "language":  "json"
-                                                                                           }
-                                                                               }
-                                                               }
-                                                  }
-                                  },
-                                  {
                                       "name":  "PUT /api/v1/users/{id}/password",
                                       "request":  {
                                                       "method":  "PUT",
@@ -644,7 +634,7 @@
                                                               },
                                                       "description":  "Normal request tab: edit fields and click Send. Copy tokens and IDs into the environment manually.",
                                                       "body":  {
-                                                                   "raw":  "{\r\n    \"username\":  \"pm-user\",\r\n    \"displayName\":  \"Process Manager\",\r\n    \"processAssignments\":  [\r\n                               {\r\n                                   \"activeOnShift\":  true,\r\n                                   \"processId\":  \"{{processId}}\"\r\n                               }\r\n                           ],\r\n    \"role\":  \"PROCESS_MANAGER\"\r\n}",
+                                                                   "raw":  "{\r\n    \"username\":  \"pm-user\",\r\n    \"status\": \"ACTIVE\",\r\n    \"displayName\":  \"Process Manager\",\r\n    \"processAssignments\":  [\r\n                               {\r\n                                   \"activeOnShift\":  true,\r\n                                   \"processId\":  \"{{processId}}\"\r\n                               }\r\n                           ],\r\n    \"role\":  \"PROCESS_MANAGER\"\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"

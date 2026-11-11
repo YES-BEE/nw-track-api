@@ -1,5 +1,8 @@
 # NW Track API
 
+For user active/inactive fields, Trolley/Lot module grants, paged collection responses,
+and the seven-day initial account lifetime, see [the API change guide](docs/API_COLLECTIONS_AND_ACCOUNT_EXPIRY.md).
+
 Spring Boot modular-monolith implementation of the consolidated NW Track backend and deployment design.
 
 For on-prem retention and one-command support ZIP extraction, see [on-prem logging](docs/ON_PREM_LOGGING.md).
@@ -130,7 +133,7 @@ Use the returned JWT as `Authorization: Bearer <token>`.
 - Back up the named PostgreSQL volume/database externally to meet the selected five-minute RPO; a single physical server alone cannot provide that RPO after server loss.
 ## Frontend integration handoff
 
-Import the collection and LAN environment from [docs/postman](docs/postman/README.md). It includes 142 requests in 19 use-case folders. The [v21 role/module contract](docs/ROLE_MODULES_V21.md) documents custom roles, independent screen grants, Style Configurator ownership and migration. Process-only assignments, NFC modes and final QC remain documented in the [configuration design](docs/CONFIGURATION_V8_DESIGN.md).
+Import the collection and LAN environment from [docs/postman](docs/postman/README.md). It includes 143 requests in 20 use-case folders. The [v21 role/module contract](docs/ROLE_MODULES_V21.md) documents custom roles, independent screen grants, Style Configurator ownership and migration. Process-only assignments, NFC modes and final QC remain documented in the [configuration design](docs/CONFIGURATION_V8_DESIGN.md).
 
 ## API documentation
 

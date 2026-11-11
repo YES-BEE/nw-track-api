@@ -19,6 +19,20 @@ public class OpenApiConfig {
     ObjectMapper legacyObjectMapper() { return JsonMapper.builder().findAndAddModules().build(); }
 
     @Bean
+    org.springdoc.core.customizers.OperationCustomizer collectionPagingParameters(){
+        return (operation,method)->{
+            boolean paged=com.yesbee.nwtrack.shared.ApiPage.class.isAssignableFrom(method.getReturnType().getParameterType())
+                || java.util.Set.of("lookups","bootstrap","changes","progress","stationDisplay","summary","factoryDisplay").contains(method.getMethod().getName());
+            if(paged){
+                operation.addParametersItem(new io.swagger.v3.oas.models.parameters.Parameter().name("page").in("query").description("Zero-based page number").schema(new io.swagger.v3.oas.models.media.IntegerSchema()._default(0).minimum(java.math.BigDecimal.ZERO)));
+                operation.addParametersItem(new io.swagger.v3.oas.models.parameters.Parameter().name("size").in("query").description("Items per page, 1–100").schema(new io.swagger.v3.oas.models.media.IntegerSchema()._default(20).minimum(java.math.BigDecimal.ONE).maximum(java.math.BigDecimal.valueOf(100))));
+                operation.addParametersItem(new io.swagger.v3.oas.models.parameters.Parameter().name("search").in("query").description("Case-insensitive literal substring across projected fields").schema(new io.swagger.v3.oas.models.media.StringSchema().maxLength(200)));
+            }
+            return operation;
+        };
+    }
+
+    @Bean
     OpenAPI nwTrackOpenApi() {
         return new OpenAPI()
                 .info(new Info().title("NW Track API").version("v1")

@@ -21,17 +21,25 @@ public class ModuleAccessService {
     }
     public void authorize(String path,String method){
         access.session();
+        if(!Set.of("/api/v1/auth/me","/api/v1/auth/change-password","/api/v1/auth/logout").contains(path)
+            &&jdbc.queryForObject("select count(*) from users where id=? and initial_password_expires_at is not null",Integer.class,access.actor())>0)
+            throw new AccessDeniedException("Change the initial password before using the application");
+        if("PC".equals(access.clientType())&&lotManagementPath(path)){
+            requireAny("lots");return;
+        }
+
         if(path.startsWith("/api/v1/styles")&&access.ownStylesOnly()
             &&!(method.equals("POST")&&path.equals("/api/v1/styles"))
             &&!(method.equals("GET")&&(path.equals("/api/v1/styles")||path.matches("/api/v1/styles/[^/]+(/derived-route)?"))))
             throw new AccessDeniedException("New Style grants create and view own styles only");
         if(!"PC".equals(access.clientType())){access.require(ApiAccessConfiguration.permission(path,method));return;}
         if(path.startsWith("/api/v1/auth/"))return;
-        if(path.equals("/api/v1/ui/lookups")){requireAny("styles","newstyle","process","storage","users");return;}
+        if(path.equals("/api/v1/ui/lookups")){requireAny("styles","newstyle","process","storage","users","trolleys","lots");return;}
         if(path.equals("/api/v1/access-roles/options")){requireAny("users","roles");return;}
         if(path.startsWith("/api/v1/access-roles")||path.equals("/api/v1/modules")){requireAny("roles");return;}
         if(path.startsWith("/api/v1/modules/"))return; // controller requires the specific module
         if(path.startsWith("/api/v1/users")){requireAny("users");return;}
+        if(path.startsWith("/api/v1/trolleys")){requireAny("trolleys");return;}
         if(path.startsWith("/api/v1/dashboard")||path.startsWith("/api/v1/displays")){requireAny("dashboard");return;}
         if(path.startsWith("/api/v1/reports")||path.endsWith("/progress")){requireAny("reports");return;}
         if(path.startsWith("/api/v1/nfc-tags")||path.startsWith("/api/v1/nfc-assignments")){requireAny("tags");return;}
@@ -50,5 +58,9 @@ public class ModuleAccessService {
         // A module checkbox must not accidentally unlock operational APIs on PC.
         if(!Set.of("NW","ADMIN_IT").contains(access.role()))throw new AccessDeniedException("This endpoint is outside the granted desktop modules");
         access.require(ApiAccessConfiguration.permission(path,method));
+    }
+    public static boolean lotManagementPath(String path){
+        return path.matches("/api/v1/lots(?:/[^/]+(?:/(?:timeline|cancel))?)?")
+            ||path.matches("/api/v1/styles/[^/]+/lots");
     }
 }
