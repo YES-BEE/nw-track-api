@@ -43,6 +43,18 @@ public class ProductionService {
         for(int i=0;i<count;i++)ids.add(createLot(styleId,quantity,actor));
         return ids;
     }
+    @Transactional public void updateLotQuantity(UUID lotId,int quantity,String reason,UUID actor){
+        if(quantity<=0)throw new IllegalArgumentException("quantity must be positive");
+        if(reason==null||reason.isBlank()||reason.length()>500)throw new IllegalArgumentException("A change reason of at most 500 characters is required");
+        var lot=jdbc.queryForMap("select quantity,status from lots where id=? for update",lotId);
+        if(Set.of("DISPATCHED","COMPLETED","CANCELLED").contains(lot.get("status")))
+            throw new BusinessRuleException("LOT_EDIT_NOT_ALLOWED","Lot quantity cannot change during transit or after completion/cancellation");
+        Integer previous=(Integer)lot.get("quantity");
+        if(Objects.equals(previous,quantity))return;
+        jdbc.update("update lots set quantity=?,version=version+1 where id=?",quantity,lotId);
+        jdbc.update("insert into lot_quantity_changes(lot_id,old_quantity,new_quantity,actor_id,reason) values (?,?,?,?,?)",lotId,previous,quantity,actor,reason.trim());
+        jdbc.update("insert into audit_log(actor_id,action,object_type,object_id,outcome,reason,detail) values (?,'UPDATE_QUANTITY','LOT',?,'SUCCESS',?,jsonb_build_object('oldQuantity',?::integer,'newQuantity',?::integer))",actor,lotId,reason.trim(),previous,quantity);
+    }
     @Transactional public void cancelLot(UUID lotId,String reason,UUID actor){String status=jdbc.queryForObject("select status from lots where id=? for update",String.class,lotId);if("COMPLETED".equals(status))throw new BusinessRuleException("COMPLETED_LOT_IMMUTABLE","A completed Lot cannot be cancelled");jdbc.update("update lot_trolley_assignments set released_at=now(),released_by=? where lot_id=? and released_at is null",actor,lotId);jdbc.update("update storage_occupancies set retrieved_at=now(),retrieved_by=? where lot_id=? and retrieved_at is null",actor,lotId);jdbc.update("update lots set status='CANCELLED',current_location_type='CANCELLED',current_location_id=null,cancelled_at=now(),cancellation_reason=?,version=version+1 where id=?",reason,lotId);jdbc.update("insert into audit_log(actor_id,action,object_type,object_id,outcome,reason) values (?,'CANCEL','LOT',?,'SUCCESS',?)",actor,lotId,reason);}
 
     private List<RouteDerivationService.SelectedProcess> selected(UUID styleId){return jdbc.query("select p.id,p.code,sp.sequence_no,p.station_id,s.code from style_processes sp join processes p on p.id=sp.process_id join stations s on s.id=p.station_id where sp.style_id=? and p.active and s.active order by sp.sequence_no",(rs,n)->new RouteDerivationService.SelectedProcess((UUID)rs.getObject(1),rs.getString(2),rs.getInt(3),(UUID)rs.getObject(4),rs.getString(5)),styleId);}

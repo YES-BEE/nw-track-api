@@ -1,7 +1,7 @@
 {
     "info":  {
                  "name":  "NW Track - Manual API requests",
-                 "description":  "145 normal requests in 20 folders. Collections return {items,page,size,totalElements}; use search/page/size. New users must change the initial password within seven days. See ../API_COLLECTIONS_AND_ACCOUNT_EXPIRY.md. No scripts. v21 supports independent module grants, custom roles, custom module placeholders and STYLE_CONFIGURATOR create/view-own. Use modules from login or auth/me for the sidebar. Copy returned roleCode, moduleKey, tokens and UUIDs manually. See ../ROLE_MODULES_V21.md and ../UI_V21_API_INTEGRATION.md.",
+                 "description":  "146 normal requests in 20 folders. Collections return {items,page,size,totalElements}; use search/page/size. New users must change the initial password within seven days. See ../API_COLLECTIONS_AND_ACCOUNT_EXPIRY.md. No scripts. v21 supports independent module grants, custom roles, custom module placeholders and STYLE_CONFIGURATOR create/view-own. Use modules from login or auth/me for the sidebar. Copy returned roleCode, moduleKey, tokens and UUIDs manually. See ../ROLE_MODULES_V21.md and ../UI_V21_API_INTEGRATION.md.",
                  "schema":  "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
              },
     "auth":  {
@@ -18,6 +18,16 @@
                  {
                      "name": "20 Trolley and lot module additions",
                      "item": [
+                         {
+                             "name":"Edit lot quantity",
+                             "request":{
+                                 "method":"PUT",
+                                 "header":[{"key":"Content-Type","value":"application/json"}],
+                                 "url":{"raw":"{{baseUrl}}/api/v1/lots/{{lotId}}","host":["{{baseUrl}}"],"path":["api","v1","lots","{{lotId}}"]},
+                                 "body":{"mode":"raw","raw":"{\n  \"quantity\": 120,\n  \"reason\": \"Quantity corrected after recount\"\n}","options":{"raw":{"language":"json"}}},
+                                 "description":"Requires PC Lot Management. Style Configurator may edit only its own styles' lots. Rejects transit, completed and cancelled lots."
+                             }
+                         },
                          {
                              "name":"Assign a trolley to a lot",
                              "request":{

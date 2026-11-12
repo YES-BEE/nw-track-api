@@ -27,6 +27,10 @@ public class ModuleAccessService {
         if("PC".equals(access.clientType())&&lotManagementPath(path)){
             requireAny("lots");return;
         }
+        if("PC".equals(access.clientType())&&"STYLE_CONFIGURATOR".equals(access.role())
+            &&method.equals("POST")&&path.matches("/api/v1/styles/[^/]+/release")){
+            requireAny("newstyle");return; // The resource interceptor enforces style ownership.
+        }
 
         if(path.startsWith("/api/v1/styles")&&access.ownStylesOnly()
             &&!(method.equals("POST")&&path.equals("/api/v1/styles"))

@@ -75,7 +75,7 @@ and returns `createdCount` plus `items`. Numbers are generated as
 Lot Management also grants PUT/DELETE `/api/v1/lots/{id}/trolley` for assignment and
 unassignment, plus GET `/api/v1/trolleys/available` for selection. See
 [Lot Management](LOT_MANAGEMENT.md) for complete requests, state rules and ownership.
-Style editing, release, dispatch and QC keep their existing permissions.
+Style Configurator may release its own styles. Lot Management supports PUT `/api/v1/lots/{id}` with `{quantity,reason}` for quantity editing before completion, excluding transit and cancelled lots. Style editing, dispatch and QC retain their existing permissions.
 ## Search and pagination
 
 ```http

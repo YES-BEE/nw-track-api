@@ -27,9 +27,10 @@ Style responses expose the plan as `lot_count` and `lot_quantity`.
 Release with `POST /api/v1/styles/{id}/release`. Release saves the route and creates
 all planned lots, visits and process executions in one transaction. On failure,
 the whole release rolls back. Repeated release returns 409 and cannot duplicate lots.
-Styles with zero planned lots release without creating any. Existing release access
-is unchanged: an administrator or Production Manager releases the style; Style
-Configurator creates the draft but cannot release it.
+Styles with zero planned lots release without creating any. Administrators and
+Production Manager retain release access. Style Configurator can also release styles
+they created, using the same POST release endpoint. Another creator's style is denied
+with 403. Custom roles with New Style alone do not receive this release permission.
 
 Generated numbers have the form `LOT-<epoch milliseconds>-<running sequence>`, for
 example `LOT-1794441600000-42`. The database sequence is global, persistent and safe
@@ -69,7 +70,7 @@ inspected total (passed + rejected). Known quantities must still match that tota
 
 ## Style Configurator ownership
 
-Style Configurator can list, read, create, cancel and map lots only for styles they
+Style Configurator can list, read, create, edit quantity, cancel and map lots only for styles they
 created. This includes lots added by an administrator to their style. The lot's own
 `created_by` does not determine visibility. Other users' lots are excluded from list
 results and totals; guessing an outside lot/style UUID returns 403.
@@ -79,6 +80,33 @@ The same restriction applies to `/styles/{id}/lots`, lot timelines and the paged
 in-production and completed styles. NW Admin, IT Admin and Production Manager keep
 their general lot access. Custom roles with New Style but no Style Management follow
 the same ownership rule when granted Lot Management.
+
+## Edit a lot's quantity
+
+```http
+PUT /api/v1/lots/{lotId}
+Content-Type: application/json
+
+{"quantity":120,"reason":"Quantity corrected after recount"}
+```
+
+All PC roles granted Lot Management can edit quantity. Style Configurator and
+ownership-restricted custom roles can edit only lots belonging to their own styles.
+The response is the updated lot. `quantity` is required and must be a positive integer;
+`reason` is required, must contain non-whitespace text and accepts at most 500 characters.
+An unspecified initial quantity can be set through this endpoint; quantity cannot be
+cleared back to null.
+
+Editing is allowed at any stage before completion, including processing, storage and
+QC, except during transit (DISPATCHED). DISPATCHED, COMPLETED and CANCELLED return 409.
+Other users' lots return 403 for ownership-restricted roles. Every actual change
+records old/new quantity, actor and reason in quantity history and the audit log.
+Repeating the current quantity succeeds without adding a duplicate change record.
+
+Lot UUID, generated number, style, route, workflow status and `original_quantity` stay
+unchanged. Edits affect only the selected lot, not sibling lots or the style's planned
+quantity. Use the existing mapping calls for trolley changes. Final QC checks against
+the updated quantity. No additional database migration is needed for this endpoint.
 
 ## Assign and unassign a trolley
 

@@ -35,11 +35,13 @@ public class ProductionController {
     @GetMapping("/styles/{id}/lots") public ApiPage<Map<String,Object>> lots(@PathVariable UUID id){return Pages.query(jdbc,LOT_SELECT+" where l.style_id=? and "+access.lotPredicate("l.id")+" order by l.created_at,l.id",id);}
     @GetMapping("/lots") public ApiPage<Map<String,Object>> allLots(){return Pages.query(jdbc,LOT_SELECT+" where "+access.lotPredicate("l.id")+" order by l.created_at,l.id");}
     @GetMapping("/lots/{id}") public Map<String,Object> lot(@PathVariable UUID id){return jdbc.queryForMap(LOT_SELECT+" where l.id=?",id);}
+    @PutMapping("/lots/{id}") public Map<String,Object> updateLot(@PathVariable UUID id,@Valid @RequestBody LotUpdate r,@AuthenticationPrincipal Jwt jwt){service.updateLotQuantity(id,r.quantity(),r.reason(),actors.id(jwt));return lot(id);}
     @GetMapping("/lots/{id}/timeline") public ApiPage<Map<String,Object>> timeline(@PathVariable UUID id){return Pages.query(jdbc,"select location_type,location_id,actor_id,occurred_at,detail from lot_location_events where lot_id=? order by occurred_at,id",id);}
     @PostMapping("/lots/{id}/cancel") @PreAuthorize("isAuthenticated()") public Map<String,Object> cancel(@PathVariable UUID id,@Valid @RequestBody ReasonCommand r,@AuthenticationPrincipal Jwt jwt){service.cancelLot(id,r.reason(),actors.id(jwt));return lot(id);}
     @PutMapping("/lots/{id}/trolley") public Map<String,Object> assignTrolley(@PathVariable UUID id,@Valid @RequestBody TrolleyMapping r,@AuthenticationPrincipal Jwt jwt){trolleyMappings.assign(id,r.trolleyId(),actors.id(jwt));return lot(id);}
     @DeleteMapping("/lots/{id}/trolley") public Map<String,Object> unassignTrolley(@PathVariable UUID id,@AuthenticationPrincipal Jwt jwt){trolleyMappings.unassign(id,actors.id(jwt));return lot(id);}
     public record TrolleyMapping(@NotNull UUID trolleyId){}
+    public record LotUpdate(@NotNull @Positive Integer quantity,@NotBlank @Size(max=500) String reason){}
     private static final String LOT_SELECT="select l.id,l.style_id,s.style_number,l.lot_number,l.quantity,l.status,l.current_route_sequence,l.current_location_type,l.current_location_id,l.created_at,l.completed_at,l.version,(select a.trolley_id from lot_trolley_assignments a where a.lot_id=l.id and a.released_at is null) trolley_id,(select t.code from lot_trolley_assignments a join trolleys t on t.id=a.trolley_id where a.lot_id=l.id and a.released_at is null) trolley_code from lots l join styles s on s.id=l.style_id";
     private void validateProcesses(List<UUID> ids){
         if(ids==null)return;

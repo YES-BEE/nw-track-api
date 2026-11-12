@@ -125,8 +125,8 @@ class PostgresWorkflowIntegrationTest {
         String styleLots="/api/v1/styles/"+styleId+"/lots";
         assertThat(call("GET",styleLots,null,creator).body().get("totalElements").asInt()).isZero();
         assertThat(call("POST",styleLots,java.util.Map.of("lotCount",2),creator).status()).isEqualTo(409);
-        assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,creator).status()).isEqualTo(403);
-        assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,admin).status()).isEqualTo(200);
+        assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,outsider).status()).isEqualTo(403);
+        assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,creator).status()).isEqualTo(200);
         assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,admin).status()).isEqualTo(409);
         Reply initial=call("GET",styleLots,null,creator);
         assertThat(initial.body().get("totalElements").asInt()).isEqualTo(3);
@@ -177,6 +177,67 @@ class PostgresWorkflowIntegrationTest {
         jdbc.update("update lots set status='DISPATCHED' where id=?::uuid",lotId);
         assertThat(call("DELETE",lotPath+"/trolley",null,creator).status()).isEqualTo(409);
         assertThat(call("POST",lotPath+"/dispatch",null,creator).status()).isEqualTo(403);
+    }
+
+    @Test void lotQuantityEditingEnforcesOwnershipStagesAndAuditHistory()throws Exception{
+        String admin=login("admin","PC"),suffix=UUID.randomUUID().toString();
+        var tokens=new java.util.LinkedHashMap<String,String>();
+        UUID owner=null;
+        for(String role:List.of("STYLE_CONFIGURATOR","NW","ADMIN_IT","PRODUCTION_MANAGER")){
+            String name=role+"-edit-"+suffix;
+            Reply user=call("POST","/api/v1/users",java.util.Map.of("username",name,"displayName",name,"initialPassword","ChangeMe123!","role",role),admin);
+            assertThat(user.status()).isEqualTo(200);
+            if(role.equals("STYLE_CONFIGURATOR"))owner=UUID.fromString(user.body().get("id").asText());
+            tokens.put(role,login(name,"PC"));
+        }
+        UUID station=UUID.randomUUID(),process=UUID.randomUUID();
+        jdbc.update("insert into stations(id,code,name) values (?,?,?)",station,"EDIT-S-"+suffix,"Edit station");
+        jdbc.update("insert into processes(id,code,name,station_id) values (?,?,?,?)",process,"EDIT-P-"+suffix,"Edit process",station);
+        UUID style=production.createConfiguredStyle("EDIT-"+suffix,"Editable",owner,List.of(process),1,10);
+        assertThat(call("POST","/api/v1/styles/"+style+"/release",null,tokens.get("STYLE_CONFIGURATOR")).status()).isEqualTo(200);
+        UUID lot=jdbc.queryForObject("select id from lots where style_id=?",UUID.class,style);
+        String path="/api/v1/lots/"+lot,number=jdbc.queryForObject("select lot_number from lots where id=?",String.class,lot);
+        int quantity=10;
+        for(var entry:tokens.entrySet()){
+            Reply edited=call("PUT",path,java.util.Map.of("quantity",++quantity,"reason","Count corrected by "+entry.getKey()),entry.getValue());
+            assertThat(edited.status()).as(edited.body().toString()).isEqualTo(200);
+            assertThat(edited.body().get("quantity").asInt()).isEqualTo(quantity);
+            assertThat(edited.body().get("lot_number").asText()).isEqualTo(number);
+            assertThat(edited.body().get("style_id").asText()).isEqualTo(style.toString());
+        }
+        assertThat(jdbc.queryForObject("select original_quantity from lots where id=?",Integer.class,lot)).isEqualTo(10);
+        assertThat(jdbc.queryForObject("select count(*) from lot_quantity_changes where lot_id=?",Integer.class,lot)).isEqualTo(4);
+        assertThat(jdbc.queryForObject("select count(*) from audit_log where object_id=? and action='UPDATE_QUANTITY'",Integer.class,lot)).isEqualTo(4);
+        for(String role:List.of("STYLE_CONFIGURATOR","SUPERVISOR")){
+            String name="outside-edit-"+role+suffix;
+            assertThat(call("POST","/api/v1/users",java.util.Map.of("username",name,"displayName",name,"initialPassword","ChangeMe123!","role",role),admin).status()).isEqualTo(200);
+            String token=login(name,"PC");
+            assertThat(call("PUT",path,java.util.Map.of("quantity",100,"reason","Not permitted"),token).status()).isEqualTo(403);
+        }
+        for(String state:List.of("READY","AT_STATION","IN_STORAGE","IN_PROCESS","READY_FOR_DISPATCH","AT_QC")){
+            jdbc.update("update lots set status=? where id=?",state,lot);
+            Reply edited=call("PUT",path,java.util.Map.of("quantity",++quantity,"reason","Recount during "+state),tokens.get("STYLE_CONFIGURATOR"));
+            assertThat(edited.status()).as(state+": "+edited.body()).isEqualTo(200);
+            assertThat(edited.body().get("status").asText()).isEqualTo(state);
+        }
+        for(String state:List.of("DISPATCHED","COMPLETED","CANCELLED")){
+            jdbc.update("update lots set status=? where id=?",state,lot);
+            assertThat(call("PUT",path,java.util.Map.of("quantity",100,"reason","Blocked state"),admin).status()).isEqualTo(409);
+        }
+        assertThat(jdbc.queryForObject("select quantity from lots where id=?",Integer.class,lot)).isEqualTo(quantity);
+        assertThat(jdbc.queryForObject("select count(*) from lot_quantity_changes where lot_id=?",Integer.class,lot)).isEqualTo(10);
+        jdbc.update("update lots set status='READY' where id=?",lot);
+        for(var invalid:List.of(java.util.Map.of("reason","Missing quantity"),java.util.Map.of("quantity",0,"reason","Zero"),java.util.Map.of("quantity",3,"reason"," "),java.util.Map.of("quantity",3)))
+            assertThat(call("PUT",path,invalid,admin).status()).isEqualTo(400);
+        UUID unset=production.createLot(style,null,owner);
+        String unsetPath="/api/v1/lots/"+unset;
+        assertThat(call("PUT",unsetPath,java.util.Map.of("quantity",25,"reason","First count"),tokens.get("STYLE_CONFIGURATOR")).status()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("select original_quantity is null from lots where id=?",Boolean.class,unset)).isTrue();
+        assertThat(jdbc.queryForObject("select old_quantity is null and new_quantity=25 and actor_id=? and reason='First count' from lot_quantity_changes where lot_id=?",Boolean.class,owner,unset)).isTrue();
+        assertThat(call("PUT",unsetPath,java.util.Map.of("quantity",25,"reason","No change"),admin).status()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("select count(*) from lot_quantity_changes where lot_id=?",Integer.class,unset)).isEqualTo(1);
+        UUID managerStyle=production.createConfiguredStyle("MGR-"+suffix,null,owner,List.of(process),1,null);
+        assertThat(call("POST","/api/v1/styles/"+managerStyle+"/release",null,tokens.get("PRODUCTION_MANAGER")).status()).isEqualTo(200);
     }
 
     @Test void releaseWithUnspecifiedQuantityAndConcurrentLotBatchesUseGeneratedNumbers()throws Exception{
@@ -272,7 +333,8 @@ class PostgresWorkflowIntegrationTest {
         assertThat(call("GET","/api/v1/styles/"+styleId,null,otherToken).status()).isEqualTo(403);
         assertThat(call("GET","/api/v1/styles/"+styleId+"/derived-route",null,otherToken).status()).isEqualTo(403);
         assertThat(call("PUT","/api/v1/styles/"+styleId+"/processes",List.of(outside.toString()),authorToken).status()).isEqualTo(403);
-        assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,authorToken).status()).isEqualTo(403);
+        assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,otherToken).status()).isEqualTo(403);
+        assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,authorToken).status()).isEqualTo(200);
         assertThat(call("POST","/api/v1/styles",java.util.Map.of("styleNumber","EMPTY-"+suffix),authorToken).status()).isEqualTo(400);
         // Failed route validation rolls back the whole create.
         UUID sameStationProcess=UUID.randomUUID();jdbc.update("insert into processes(id,code,name,station_id) values (?,?,?,?)",sameStationProcess,"SECOND-"+suffix,"Second",station);

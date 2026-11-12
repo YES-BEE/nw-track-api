@@ -34,7 +34,9 @@ class ModuleAccessServiceTest {
         modules.authorize("/api/v1/lots/"+UUID.randomUUID()+"/trolley","PUT");
         modules.authorize("/api/v1/lots/"+UUID.randomUUID()+"/trolley","DELETE");
         modules.authorize("/api/v1/trolleys/available","GET");
-        assertThatThrownBy(()->modules.authorize("/api/v1/styles/"+UUID.randomUUID()+"/release","POST")).isInstanceOf(AccessDeniedException.class);
+        modules.authorize("/api/v1/styles/"+UUID.randomUUID()+"/release","POST");
+        modules.authorize("/api/v1/lots/"+UUID.randomUUID(),"PUT");
+        assertThatThrownBy(()->modules.authorize("/api/v1/styles/"+UUID.randomUUID()+"/processes","PUT")).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(()->modules.authorize("/api/v1/lots/"+UUID.randomUUID()+"/dispatch","POST")).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(()->modules.authorize("/api/v1/trolleys","GET")).isInstanceOf(AccessDeniedException.class);
     }

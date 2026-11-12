@@ -14,7 +14,7 @@ Use [ROLE_MODULES_V21.md](ROLE_MODULES_V21.md) for complete role/module request 
 | Production Manager | PRODUCTION_MANAGER | dashboard, reports, process, storage, tags, styles |
 | Supervisor | SUPERVISOR | dashboard, reports |
 | Process Manager | PROCESS_MANAGER | none; login and account APIs still work |
-| Style Configurator | STYLE_CONFIGURATOR | newstyle; create and view own |
+| Style Configurator | STYLE_CONFIGURATOR | newstyle/lots; create/view/release own styles; manage owned lots |
 | Custom role | Generated CUSTOM_... code | Explicitly selected module keys; assigned-process/station scope |
 
 V6 replaces STATION_0 with STYLE_CONFIGURATOR in place, preserving user associations and history but removing the old operational permissions. Built-in roles cannot be deleted. Assigned custom roles cannot be deleted until all users are reassigned.
@@ -357,7 +357,7 @@ This request requires a JSON body and returns no record body. Unassignment leave
 
 ## 9. Style Management and New Style
 
-Style Management uses the styles module. New Style uses newstyle: built-in Style Configurator and create-only custom roles can create and view their own styles, with no update/delete/release/revision access. The backend enforces ownership on collection/detail/route reads.
+Style Management uses the styles module. New Style uses newstyle: built-in Style Configurator can create, view and release its own styles, with no update/delete/revision access. Create-only custom roles retain create/view-own access without release. The backend enforces ownership on collection/detail/route reads.
 ### Style form and table mapping
 
 | Existing selector / local property | Current request field | Response/read mapping and limitation |
@@ -425,7 +425,7 @@ There is no general PUT /styles/{id}, rename or DELETE endpoint. Existing produc
 - POST `/api/v1/styles/{id}/release`, no body: releases DRAFT. No current v21 Release button; do not release automatically on Save.
 - POST `/api/v1/styles/{id}/lots`: `{lotCount,quantity?}` adds a batch after release, with backend-generated numbers. Response: `{createdCount,items}`. Planned lots from style creation are generated automatically at release. Lot Management includes PUT/DELETE `/api/v1/lots/{id}/trolley`.
 
-Do not silently map generic Edit to an in-progress revision. Style Configurator/create-only users are denied style edits, revisions and release even on their own styles. With Lot Management, they can add and map lots only for their own styles. All future own-style UI filters are backed by server ownership checks; the local createdBy comparison is not security.
+Do not silently map generic Edit to an in-progress revision. Style Configurator is denied style edits and revisions but can release its own styles. Create-only custom roles cannot release. With Lot Management, they can add, edit quantity and map lots only for their own styles. Use PUT `/api/v1/lots/{id}` with `{quantity,reason}`; quantity editing is blocked during transit and after completion/cancellation. All future own-style UI filters are backed by server ownership checks; the local createdBy comparison is not security.
 ## 10. User Management
 
 The current generated form has only username, role and status. It cannot supply all required create fields. Extend it before claiming complete user integration.
@@ -559,4 +559,4 @@ Verify independent grants for every module; direct forbidden API calls must fail
 
 The roles/permissions APIs are implemented. Remaining v21 business-field gaps are style client, aggregate garment/planned-lot counts, weights, delivery date/manual creation date and general style update/delete behavior. They were not part of this role authorization implementation. Do not mark unsupported fields saved or store them silently in localStorage.
 
-Reference: [general guide](API_INTEGRATION_GUIDE.md), [role/module contracts](ROLE_MODULES_V21.md), [process assignment contracts](PROCESS_ASSIGNMENT_V5.md), [Postman instructions](postman/README.md), [145-request collection](postman/NW_Track.postman_collection.json). New APIs are in folder 19; no scripts are used. Set roleCode/moduleKey manually from responses.
+Reference: [general guide](API_INTEGRATION_GUIDE.md), [role/module contracts](ROLE_MODULES_V21.md), [process assignment contracts](PROCESS_ASSIGNMENT_V5.md), [Postman instructions](postman/README.md), [146-request collection](postman/NW_Track.postman_collection.json). New APIs are in folder 19; no scripts are used. Set roleCode/moduleKey manually from responses.
