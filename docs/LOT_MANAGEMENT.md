@@ -32,12 +32,26 @@ Production Manager retain release access. Style Configurator can also release st
 they created, using the same POST release endpoint. Another creator's style is denied
 with 403. Custom roles with New Style alone do not receive this release permission.
 
-Generated numbers have the form `LOT-<epoch milliseconds>-<running sequence>`, for
-example `LOT-1794441600000-42`. The database sequence is global, persistent and safe
-under concurrent requests. It does not reset per style or timestamp. Rollbacks can
-leave gaps. The separate internal `id` remains a UUID. Do not send `lotNumber` or `id`
-when creating lots.
+Generated numbers have the form `LOT-<epoch milliseconds>-<style sequence>`, for
+example `LOT-1794441600000-001`, then `LOT-1794441600001-002`. Each new style starts
+at 001 and advances by one for each committed lot, across release-time and later
+batches. The suffix is padded to at least three digits and is never truncated or
+wrapped (1000 remains 1000 if ever reached).
 
+Migration V9 preserves every existing lot number. Existing styles continue after
+the larger of their existing lot count and largest historical generated suffix;
+new styles start at 001. Historical global suffixes are not rewritten. Cancelled
+lots still consume their sequence position.
+
+A row-locked per-style counter and unique `(style_id,lot_sequence)` index protect
+new allocations. A factory-wide logical epoch millisecond is reserved for each lot,
+using the larger of the current epoch time and the last reserved millisecond plus
+one. This prevents different styles both producing the same timestamp-001 number,
+including during concurrent requests or clock adjustments. The existing unique
+`lot_number` constraint provides the final database safeguard against duplicates
+within the factory database. Counter updates roll back with a failed creation.
+
+The separate internal `id` remains a UUID. Do not send `lotNumber` or `id` when creating lots.
 ## Add more lots after release
 
 ```http
@@ -56,7 +70,7 @@ Adding lots to a completed style reopens it for production.
 The response is always a batch object, including when creating one lot:
 
 ```json
-{"createdCount":3,"items":[{"id":"<UUID>","lot_number":"LOT-1794441600000-42","quantity":80}]}
+{"createdCount":3,"items":[{"id":"<UUID>","lot_number":"LOT-1794441600000-001","quantity":80}]}
 ```
 
 `items` contains every created lot. Read the resulting inventory using the paginated

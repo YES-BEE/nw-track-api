@@ -1,10 +1,11 @@
 param(
-    [ValidateSet("start", "configure", "status", "test", "remove", "support")]
+    [ValidateSet("start", "configure", "status", "test", "remove", "support", "backup")]
     [string]$Action = "start",
     [string]$BindAddress,
     [string]$AllowedSubnet,
     [switch]$EnableHttps,
-    [ValidateRange(1,720)][int]$SinceHours = 24
+    [ValidateRange(1,720)][int]$SinceHours = 24,
+    [string]$BackupDirectory
 )
 
 $ErrorActionPreference = "Stop"
@@ -269,6 +270,7 @@ function Enable-LogArchiving {
     }
     Write-Host "Automatic log archiving is enabled (every five minutes while the Docker user is logged in)." -ForegroundColor Green
     Write-Host "To export logs later: deployment\windows\install.cmd support" -ForegroundColor Cyan
+    Write-Host "To back up the database: deployment\windows\install.cmd backup" -ForegroundColor Cyan
 }
 
 if ($Action -in @("start","configure","remove") -and -not (Test-Administrator)) { Invoke-Elevated }
@@ -290,6 +292,14 @@ switch ($Action) {
     "support" {
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "support.ps1") bundle -SinceHours $SinceHours
         if ($LASTEXITCODE -ne 0) { throw "Support collection was incomplete. Check the bundle output and capture.txt for diagnostics." }
+    }
+    "backup" {
+        $previousBackupDirectory = $env:NWTRACK_BACKUP_DIRECTORY
+        try {
+            if ($BackupDirectory) { $env:NWTRACK_BACKUP_DIRECTORY = $BackupDirectory }
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "backup.ps1")
+            if ($LASTEXITCODE -ne 0) { throw "Database backup failed. No successful backup was reported; review the error above." }
+        } finally { $env:NWTRACK_BACKUP_DIRECTORY = $previousBackupDirectory }
     }
     "status" { Show-Status }
     "test" { Test-Deployment }

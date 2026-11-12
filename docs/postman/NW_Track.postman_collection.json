@@ -1,7 +1,7 @@
 {
     "info":  {
                  "name":  "NW Track - Manual API requests",
-                 "description":  "146 normal requests in 20 folders. Collections return {items,page,size,totalElements}; use search/page/size. New users must change the initial password within seven days. See ../API_COLLECTIONS_AND_ACCOUNT_EXPIRY.md. No scripts. v21 supports independent module grants, custom roles, custom module placeholders and STYLE_CONFIGURATOR create/view-own. Use modules from login or auth/me for the sidebar. Copy returned roleCode, moduleKey, tokens and UUIDs manually. See ../ROLE_MODULES_V21.md and ../UI_V21_API_INTEGRATION.md.",
+                 "description":  "149 normal requests in 21 folders. Collections return {items,page,size,totalElements}; use search/page/size. New users must change the initial password within seven days. See ../API_COLLECTIONS_AND_ACCOUNT_EXPIRY.md. No scripts. v21 supports independent module grants, custom roles, custom module placeholders and STYLE_CONFIGURATOR create/view-own. Use modules from login or auth/me for the sidebar. Copy returned roleCode, moduleKey, tokens and UUIDs manually. See ../ROLE_MODULES_V21.md and ../UI_V21_API_INTEGRATION.md.",
                  "schema":  "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
              },
     "auth":  {
@@ -15,6 +15,35 @@
                             ]
              },
     "item":  [
+                 {
+                     "name":"21 Factory dashboard displays",
+                     "item":[
+                         {
+                             "name":"Factory display production lots",
+                             "request":{
+                                 "method":"GET","header":[],
+                                 "url":{"raw":"{{baseUrl}}/api/v1/displays/lots?page=0&size=10","host":["{{baseUrl}}"],"path":["api","v1","displays","lots"],"query":[{"key":"page","value":"0"},{"key":"size","value":"10"}]},
+                                 "description":"Same searchable/status-filtered production table as dashboard/lots. Poll alongside displays/factory-summary using the returned refresh interval."
+                             }
+                         },
+                         {
+                             "name":"Dashboard lot view action",
+                             "request":{
+                                 "method":"GET","header":[],
+                                 "url":{"raw":"{{baseUrl}}/api/v1/dashboard/lots/{{lotId}}","host":["{{baseUrl}}"],"path":["api","v1","dashboard","lots","{{lotId}}"]},
+                                 "description":"Read-only dashboard details including readable location and current process status. Dashboard access and lot visibility are enforced."
+                             }
+                         },
+                         {
+                             "name":"Factory display lot details",
+                             "request":{
+                                 "method":"GET","header":[],
+                                 "url":{"raw":"{{baseUrl}}/api/v1/displays/lots/{{lotId}}","host":["{{baseUrl}}"],"path":["api","v1","displays","lots","{{lotId}}"]},
+                                 "description":"Same read model as the dashboard lot view action; no Lot Management write permission is needed."
+                             }
+                         }
+                     ]
+                 },
                  {
                      "name": "20 Trolley and lot module additions",
                      "item": [

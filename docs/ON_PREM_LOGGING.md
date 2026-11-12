@@ -2,6 +2,10 @@
 
 Run commands below from the repository directory on the on-prem Windows server. No internet upload or database backup is performed by the collector.
 
+For database data, use the same installer with `deployment\windows\install.cmd backup`.
+See [database backup and recovery](DATABASE_BACKUP.md). Database backups are separate
+from support-log bundles.
+
 ## One-time setup
 
 Deploy the logging change through the normal lifecycle:
