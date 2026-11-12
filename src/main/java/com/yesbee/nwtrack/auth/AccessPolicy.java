@@ -115,6 +115,7 @@ public class AccessPolicy {
         return global()?"true":column+" in (select upa.process_id from user_process_assignments upa join processes p on p.id=upa.process_id join stations s on s.id=p.station_id where p.active and s.active and upa.user_id='"+actor()+"'::uuid)";
     }
     public String lotPredicate(String column) {
+        if("PC".equals(clientType())&&ownStylesOnly())return "exists(select 1 from lots owner_l join styles owner_s on owner_s.id=owner_l.style_id where owner_l.id="+column+" and owner_s.created_by='"+actor()+"'::uuid)";
         if("PC".equals(clientType())&&hasModule("lots"))return "true";
         return global()?"true":"exists(select 1 from station_visits scope_sv where scope_sv.lot_id="+column+" and "+stationPredicate("scope_sv.station_id")+")";
     }

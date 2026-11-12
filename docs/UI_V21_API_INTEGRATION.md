@@ -368,7 +368,8 @@ Style Management uses the styles module. New Style uses newstyle: built-in Style
 | `#styleDesc` / `description` | `description` on POST or revision | `description`; no general metadata PUT |
 | `#styleClient` / `client` | **None** | No client field in style API/schema contract |
 | `#styleGarments` / `garments` | **None** | No total-garment field; do not equate with one lot's `quantity` |
-| `#styleLots` / `lots` | **None** | No planned lot-count field; GET lots returns actual created lots only |
+| `#styleLots` / `lots` | `lotCount` on POST | `lot_count` stores the plan; lots are generated at release |
+| Proposed optional quantity per lot | `quantity` on POST | `lot_quantity`; applies to each planned lot, not total garments |
 | `#styleWeight` / `weight` | **None** | No weight-per-lot field |
 | `#styleAvg` / `avg` | **None** | No average garment weight field; do not calculate or store it as description |
 | `#styleDelivery` / `delivery` | **None** | No delivery-date field |
@@ -378,9 +379,9 @@ Style Management uses the styles module. New Style uses newstyle: built-in Style
 | Dummy `createdBy` | Not submitted | `created_by` user UUID; own-only filtering is enforced server-side |
 | Additional useful read-only state | Not on basic create form | `status`, `released_at`, `version` |
 
-`#styleRecords` columns: Style Number ← `style_number`; Created ← `created_at`; Route ← flattened process IDs joined to process `name`. Client, Garments and Delivery Date have no response source; show an explicit unavailable marker or remove them for the supported subset. Lots can be relabeled **Actual Lots** and populated from `GET /api/v1/styles/{id}/lots` length, but this is a different meaning from the planned Number of Lots input. Do not imply those fields are saved.
+`#styleRecords` columns: Style Number ← `style_number`; Created ← `created_at`; Route ← flattened process IDs joined to process `name`. Client, Garments and Delivery Date have no response source; show an explicit unavailable marker or remove them for the supported subset. Show planned lots from `lot_count` and actual lots from the `totalElements` of GET `/api/v1/styles/{id}/lots`. Planned lots are created only at release. See [Lot Management](LOT_MANAGEMENT.md).
 
-`#styleSearch` can filter loaded `style_number` and `description` locally. Client search is unavailable. Collection GET has no search/pagination query contract. Formatting `created_at` as a local calendar date is display-only; do not send it back as `styleCreated`.
+`#styleSearch` uses GET `/api/v1/styles?search=...&page=0&size=20`. Client search is unavailable. Read `items` and `totalElements` from collection responses. Formatting `created_at` as a local calendar date is display-only; do not send it back as `styleCreated`.
 
 ### Save and sequence integration
 
@@ -390,6 +391,8 @@ POST `/api/v1/styles` now accepts the ordered route atomically with metadata:
 {
   "styleNumber":"STY-2026-001",
   "description":"Denim wash",
+  "lotCount":5,
+  "quantity":100,
   "processIds":["11111111-1111-4111-8111-111111111111"]
 }
 ```
@@ -420,9 +423,9 @@ There is no general PUT /styles/{id}, rename or DELETE endpoint. Existing produc
 
 - POST `/api/v1/styles/{id}/revisions/unstarted` or `/revisions/in-progress`: `{description,processIds,reason,quantity?}`; result revisionId/revisionNumber/affectedLots/scope. Optional quantity changes each affected lot, not the total style garment count.
 - POST `/api/v1/styles/{id}/release`, no body: releases DRAFT. No current v21 Release button; do not release automatically on Save.
-- POST `/api/v1/styles/{id}/lots`: `{lotNumber,quantity}`, creates one lot after release. Number of Lots input is not a direct mapping to this operation.
+- POST `/api/v1/styles/{id}/lots`: `{lotCount,quantity?}` adds a batch after release, with backend-generated numbers. Response: `{createdCount,items}`. Planned lots from style creation are generated automatically at release. Lot Management includes PUT/DELETE `/api/v1/lots/{id}/trolley`.
 
-Do not silently map generic Edit to an in-progress revision. Style Configurator/create-only users are denied these actions even on their own styles. All future own-style UI filters are backed by server ownership checks; the local createdBy comparison is not security.
+Do not silently map generic Edit to an in-progress revision. Style Configurator/create-only users are denied style edits, revisions and release even on their own styles. With Lot Management, they can add and map lots only for their own styles. All future own-style UI filters are backed by server ownership checks; the local createdBy comparison is not security.
 ## 10. User Management
 
 The current generated form has only username, role and status. It cannot supply all required create fields. Extend it before claiming complete user integration.
@@ -556,4 +559,4 @@ Verify independent grants for every module; direct forbidden API calls must fail
 
 The roles/permissions APIs are implemented. Remaining v21 business-field gaps are style client, aggregate garment/planned-lot counts, weights, delivery date/manual creation date and general style update/delete behavior. They were not part of this role authorization implementation. Do not mark unsupported fields saved or store them silently in localStorage.
 
-Reference: [general guide](API_INTEGRATION_GUIDE.md), [role/module contracts](ROLE_MODULES_V21.md), [process assignment contracts](PROCESS_ASSIGNMENT_V5.md), [Postman instructions](postman/README.md), [143-request collection](postman/NW_Track.postman_collection.json). New APIs are in folder 19; no scripts are used. Set roleCode/moduleKey manually from responses.
+Reference: [general guide](API_INTEGRATION_GUIDE.md), [role/module contracts](ROLE_MODULES_V21.md), [process assignment contracts](PROCESS_ASSIGNMENT_V5.md), [Postman instructions](postman/README.md), [145-request collection](postman/NW_Track.postman_collection.json). New APIs are in folder 19; no scripts are used. Set roleCode/moduleKey manually from responses.

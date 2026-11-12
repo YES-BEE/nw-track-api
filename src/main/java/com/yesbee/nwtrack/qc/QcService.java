@@ -18,10 +18,10 @@ public class QcService {
         return complete(lot,rejected==0?"PASS":passed==0?"REJECT":"PARTIAL_REJECT",passed+rejected,passed,rejected,remarks,actor);
     }
     @Transactional public UUID complete(UUID lotId,String outcome,int inspected,int good,int rejected,String reason,UUID actor){
-        Lot lot=jdbc.queryForObject("select l.quantity,l.style_id,l.status from lots l where l.id=? for update",(rs,n)->new Lot(rs.getInt(1),(UUID)rs.getObject(2),rs.getString(3)),lotId);
+        Lot lot=jdbc.queryForObject("select l.quantity,l.style_id,l.status from lots l where l.id=? for update",(rs,n)->new Lot((Integer)rs.getObject(1),(UUID)rs.getObject(2),rs.getString(3)),lotId);
         if(lot==null)throw new BusinessRuleException("LOT_NOT_FOUND","Lot was not found");
         if("COMPLETED".equals(lot.status())||"CANCELLED".equals(lot.status()))throw new BusinessRuleException("LOT_TERMINAL","Lot is already terminal");
-        if(good<0||rejected<0||inspected!=lot.quantity()||(long)good+rejected!=inspected)throw new BusinessRuleException("QC_QUANTITY_MISMATCH","Passed plus rejected must equal the positive Lot quantity");
+        if(good<0||rejected<0||inspected<=0||(lot.quantity()!=null&&inspected!=lot.quantity())||(long)good+rejected!=inspected)throw new BusinessRuleException("QC_QUANTITY_MISMATCH","Passed plus rejected must equal the positive Lot quantity");
         if(rejected>0&&(reason==null||reason.isBlank()))throw new BusinessRuleException("QC_REMARKS_REQUIRED","Remarks are required when pieces are rejected");
         String expected=rejected==0?"PASS":good==0?"REJECT":"PARTIAL_REJECT";
         if(!expected.equals(outcome))throw new BusinessRuleException("QC_OUTCOME_MISMATCH","Outcome does not match the passed and rejected quantities");
@@ -37,6 +37,7 @@ public class QcService {
         jdbc.update("update process_machine_usage set completed_at=now(),completed_by=? where process_execution_id=? and completed_at is null",actor,finalExecution);
         Integer unresolved=jdbc.queryForObject("select count(*) from process_executions pe join station_visits sv on sv.id=pe.station_visit_id where sv.lot_id=? and pe.status not in ('COMPLETED','SKIPPED')",Integer.class,lotId);
         if(unresolved!=null&&unresolved>0)throw new BusinessRuleException("PROCESSES_INCOMPLETE","All required Processes must be resolved before QC completion");
+        if(lot.quantity()==null)jdbc.update("update lots set quantity=? where id=?",inspected,lotId);
         UUID inspectionId=UUID.randomUUID();
         jdbc.update("insert into qc_inspections(id,lot_id,outcome,inspected_quantity,good_quantity,rejected_quantity,reason,operator_id,completed_at) values (?,?,?,?,?,?,?,?,now())",inspectionId,lotId,outcome,inspected,good,rejected,reason,actor);
         jdbc.update("update station_visits set status='COMPLETED',completed_at=now(),version=version+1 where lot_id=? and station_id=?",lotId,qcStation);
@@ -47,5 +48,5 @@ public class QcService {
         if(open!=null&&open==0)jdbc.update("update styles set status='COMPLETED',version=version+1 where id=?",lot.styleId());
         return inspectionId;
     }
-    private record Lot(int quantity,UUID styleId,String status){}
+    private record Lot(Integer quantity,UUID styleId,String status){}
 }

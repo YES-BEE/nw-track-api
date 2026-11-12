@@ -39,6 +39,7 @@ public class ModuleAccessService {
         if(path.startsWith("/api/v1/access-roles")||path.equals("/api/v1/modules")){requireAny("roles");return;}
         if(path.startsWith("/api/v1/modules/"))return; // controller requires the specific module
         if(path.startsWith("/api/v1/users")){requireAny("users");return;}
+        if(path.equals("/api/v1/trolleys/available")&&method.equals("GET")){requireAny("trolleys","lots");return;}
         if(path.startsWith("/api/v1/trolleys")){requireAny("trolleys");return;}
         if(path.startsWith("/api/v1/dashboard")||path.startsWith("/api/v1/displays")){requireAny("dashboard");return;}
         if(path.startsWith("/api/v1/reports")||path.endsWith("/progress")){requireAny("reports");return;}
@@ -60,7 +61,7 @@ public class ModuleAccessService {
         access.require(ApiAccessConfiguration.permission(path,method));
     }
     public static boolean lotManagementPath(String path){
-        return path.matches("/api/v1/lots(?:/[^/]+(?:/(?:timeline|cancel))?)?")
+        return path.matches("/api/v1/lots(?:/[^/]+(?:/(?:timeline|cancel|trolley))?)?")
             ||path.matches("/api/v1/styles/[^/]+/lots");
     }
 }

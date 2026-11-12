@@ -18,7 +18,7 @@ A user has one of the seven fixed roles and zero or more process assignments. Ea
 }
 ```
 
-POST `/api/v1/users` creates the account. GET collection/item reads it; PUT `/users/{id}` updates profile, role and assignments; PUT `/users/{id}/assignments` replaces the assignment list. Sending an empty list removes assignments. DELETE `/users/{id}` disables the account while retaining history. Password/role/status endpoints remain available.
+POST `/api/v1/users` creates the account. GET collection/item reads it; PUT `/users/{id}` updates profile, role and assignments; PUT `/users/{id}/assignments` replaces the assignment list. Sending an empty list removes assignments. DELETE `/users/{id}` disables the account while retaining history. Password and role endpoints remain available. Set `status` to `ACTIVE` or `INACTIVE` in POST/PUT user requests; there is no separate user status endpoint.
 
 Login, refresh, `/auth/me`, user reads and sync bootstrap return `processAssignments`. Each item contains `processId`, `processName`, `stationId`, `stationNumber`, `activeOnShift`, `processActive`, and `stationActive`. These are current database values, not frozen station claims in the JWT. A process station change therefore updates derived user scope without editing the account. Factory-wide role privileges remain as documented in the access matrix.
 

@@ -1,7 +1,7 @@
 {
     "info":  {
                  "name":  "NW Track - Manual API requests",
-                 "description":  "143 normal requests in 20 folders. Collections return {items,page,size,totalElements}; use search/page/size. New users must change the initial password within seven days. See ../API_COLLECTIONS_AND_ACCOUNT_EXPIRY.md. No scripts. v21 supports independent module grants, custom roles, custom module placeholders and STYLE_CONFIGURATOR create/view-own. Use modules from login or auth/me for the sidebar. Copy returned roleCode, moduleKey, tokens and UUIDs manually. See ../ROLE_MODULES_V21.md and ../UI_V21_API_INTEGRATION.md.",
+                 "description":  "145 normal requests in 20 folders. Collections return {items,page,size,totalElements}; use search/page/size. New users must change the initial password within seven days. See ../API_COLLECTIONS_AND_ACCOUNT_EXPIRY.md. No scripts. v21 supports independent module grants, custom roles, custom module placeholders and STYLE_CONFIGURATOR create/view-own. Use modules from login or auth/me for the sidebar. Copy returned roleCode, moduleKey, tokens and UUIDs manually. See ../ROLE_MODULES_V21.md and ../UI_V21_API_INTEGRATION.md.",
                  "schema":  "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
              },
     "auth":  {
@@ -18,6 +18,25 @@
                  {
                      "name": "20 Trolley and lot module additions",
                      "item": [
+                         {
+                             "name":"Assign a trolley to a lot",
+                             "request":{
+                                 "method":"PUT",
+                                 "header":[{"key":"Content-Type","value":"application/json"}],
+                                 "url":{"raw":"{{baseUrl}}/api/v1/lots/{{lotId}}/trolley","host":["{{baseUrl}}"],"path":["api","v1","lots","{{lotId}}","trolley"]},
+                                 "body":{"mode":"raw","raw":"{\n  \"trolleyId\": \"{{trolleyId}}\"\n}","options":{"raw":{"language":"json"}}},
+                                 "description":"PC Lot Management; Style Configurator can map only its own styles' lots. Lot must be ready or waiting at a station."
+                             }
+                         },
+                         {
+                             "name":"Unassign a trolley from a lot",
+                             "request":{
+                                 "method":"DELETE",
+                                 "header":[],
+                                 "url":{"raw":"{{baseUrl}}/api/v1/lots/{{lotId}}/trolley","host":["{{baseUrl}}"],"path":["api","v1","lots","{{lotId}}","trolley"]},
+                                 "description":"PC Lot Management; restores the previous location and releases the trolley."
+                             }
+                         },
                          {
                              "name": "Search all lots with pagination",
                              "request": {
@@ -2535,7 +2554,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\"styleNumber\":\"STYLE-{{$timestamp}}\",\"description\":\"Sample production style\",\"processIds\":[\"{{processId}}\",\"{{qualityProcessId}}\"]}",
+                                                                   "raw":  "{\"styleNumber\":\"STYLE-{{$timestamp}}\",\"description\":\"Sample production style\",\"processIds\":[\"{{processId}}\",\"{{qualityProcessId}}\"],\"lotCount\":5,\"quantity\":100}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"
@@ -2781,7 +2800,7 @@
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history.",
                                                       "body":  {
                                                                    "mode":  "raw",
-                                                                   "raw":  "{\r\n    \"lotNumber\":  \"LOT-{{$timestamp}}\",\r\n    \"quantity\":  100\r\n}",
+                                                                   "raw":  "{\r\n    \"lotCount\":  3,\r\n    \"quantity\":  100\r\n}",
                                                                    "options":  {
                                                                                    "raw":  {
                                                                                                "language":  "json"

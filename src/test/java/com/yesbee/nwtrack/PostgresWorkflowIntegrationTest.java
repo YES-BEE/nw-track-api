@@ -113,28 +113,97 @@ class PostgresWorkflowIntegrationTest {
         assertThat(com.yesbee.nwtrack.shared.Pages.query(jdbc,new com.yesbee.nwtrack.shared.Pages.Options(10,20,"alpha"),sql).totalElements()).isEqualTo(2);
     }
 
-    @Test void dedicatedModulesGrantTrolleysAndLotsWithoutGrantingStyleEditing()throws Exception{
-        String admin=login("admin","PC"),suffix=UUID.randomUUID().toString();
-        for(String role:List.of("NW","ADMIN_IT","PRODUCTION_MANAGER","STYLE_CONFIGURATOR")){
-            String name=role+suffix;
-            assertThat(call("POST","/api/v1/users",java.util.Map.of("username",name,"displayName",name,"initialPassword","ChangeMe123!","role",role),admin).status()).isEqualTo(200);
-            String token=login(name,"PC");
-            assertThat(call("GET","/api/v1/lots?size=1",null,token).status()).isEqualTo(200);
-            assertThat(call("GET","/api/v1/trolleys",null,token).status()).isEqualTo(role.equals("STYLE_CONFIGURATOR")?403:200);
-        }
-        UUID actor=jdbc.queryForObject("select id from users where username='admin'",UUID.class),station=UUID.randomUUID(),process=UUID.randomUUID();
+    @Test void plannedLotsAreGeneratedAtReleaseAndConfiguratorOwnsAllLotsOfTheirStyles()throws Exception{
+        String admin=login("admin","PC"),suffix=UUID.randomUUID().toString(),owner="lot-owner-"+suffix,other="lot-other-"+suffix;
+        for(String name:List.of(owner,other))assertThat(call("POST","/api/v1/users",java.util.Map.of("username",name,"displayName",name,"initialPassword","ChangeMe123!","role","STYLE_CONFIGURATOR"),admin).status()).isEqualTo(200);
+        String creator=login(owner,"PC"),outsider=login(other,"PC");
+        UUID station=UUID.randomUUID(),process=UUID.randomUUID();
         jdbc.update("insert into stations(id,code,name) values (?,?,?)",station,"LM-S-"+suffix,"Lot station");
         jdbc.update("insert into processes(id,code,name,station_id) values (?,?,?,?)",process,"LM-P-"+suffix,"Lot process",station);
-        UUID style=production.createConfiguredStyle("LM-"+suffix,"Released style",actor,List.of(process));production.release(style);
-        String creator=login("STYLE_CONFIGURATOR"+suffix,"PC");
-        assertThat(call("GET","/api/v1/styles/"+style,null,creator).status()).isEqualTo(403);
-        Reply lot=call("POST","/api/v1/styles/"+style+"/lots",java.util.Map.of("lotNumber","LM-L-"+suffix,"quantity",10),creator);
-        assertThat(lot.status()).as(lot.body().toString()).isEqualTo(200);
-        assertThat(call("GET","/api/v1/styles/"+style+"/lots",null,creator).body().get("totalElements").asInt()).isEqualTo(1);
-        assertThat(call("POST","/api/v1/lots/"+lot.body().get("id").asText()+"/cancel",java.util.Map.of("reason","Test cancellation"),creator).status()).isEqualTo(200);
-        assertThat(call("POST","/api/v1/styles/"+style+"/release",null,creator).status()).isEqualTo(403);
+        Reply style=call("POST","/api/v1/styles",java.util.Map.of("styleNumber","LM-"+suffix,"processIds",List.of(process.toString()),"lotCount",3,"quantity",10),creator);
+        assertThat(style.status()).as(style.body().toString()).isEqualTo(200);String styleId=style.body().get("id").asText();
+        String styleLots="/api/v1/styles/"+styleId+"/lots";
+        assertThat(call("GET",styleLots,null,creator).body().get("totalElements").asInt()).isZero();
+        assertThat(call("POST",styleLots,java.util.Map.of("lotCount",2),creator).status()).isEqualTo(409);
+        assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,creator).status()).isEqualTo(403);
+        assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,admin).status()).isEqualTo(200);
+        assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,admin).status()).isEqualTo(409);
+        Reply initial=call("GET",styleLots,null,creator);
+        assertThat(initial.body().get("totalElements").asInt()).isEqualTo(3);
+        var numbers=new java.util.HashSet<String>();
+        for(var lot:initial.body().get("items")){
+            assertThat(lot.get("quantity").asInt()).isEqualTo(10);
+            assertThat(lot.get("lot_number").asText()).matches("LOT-[0-9]{13}-[0-9]+");numbers.add(lot.get("lot_number").asText());
+            UUID.fromString(lot.get("id").asText());
+        }
+        assertThat(numbers).hasSize(3);
+        // Admin-created lots of the configurator's style are visible to its owner too.
+        Reply additional=call("POST",styleLots,java.util.Map.of("lotCount",2),admin);
+        assertThat(additional.status()).as(additional.body().toString()).isEqualTo(200);
+        assertThat(additional.body().get("createdCount").asInt()).isEqualTo(2);
+        assertThat(additional.body().get("items").get(0).get("quantity").isNull()).isTrue();
+        assertThat(call("GET",styleLots,null,creator).body().get("totalElements").asInt()).isEqualTo(5);
+        assertThat(call("GET","/api/v1/lots",null,creator).body().get("totalElements").asInt()).isEqualTo(5);
+        assertThat(call("GET","/api/v1/lots",null,outsider).body().get("totalElements").asInt()).isZero();
+        assertThat(call("GET",styleLots,null,outsider).status()).isEqualTo(403);
+        assertThat(call("POST",styleLots,java.util.Map.of("lotCount",1),outsider).status()).isEqualTo(403);
+        String lotId=initial.body().get("items").get(0).get("id").asText(),lotPath="/api/v1/lots/"+lotId;
+        for(String path:List.of(lotPath,lotPath+"/timeline"))assertThat(call("GET",path,null,outsider).status()).isEqualTo(403);
+        assertThat(call("POST",lotPath+"/cancel",java.util.Map.of("reason","Not my lot"),outsider).status()).isEqualTo(403);
+        assertThat(call("GET","/api/v1/ui/lookups",null,creator).body().get("styles").get("totalElements").asInt()).isEqualTo(1);
+        assertThat(call("GET","/api/v1/ui/lookups",null,outsider).body().get("styles").get("totalElements").asInt()).isZero();
+        assertThat(call("POST",styleLots,java.util.Map.of("lotCount",0),creator).status()).isEqualTo(400);
+        assertThat(call("POST",styleLots,java.util.Map.of("lotCount",1,"quantity",0),creator).status()).isEqualTo(400);
+        assertThat(call("GET",styleLots,null,creator).body().get("totalElements").asInt()).isEqualTo(5);
+        // Lot Management allows choosing and releasing a trolley without general configuration access.
+        Reply trolley=call("POST","/api/v1/trolleys",java.util.Map.of("code","LM-T-"+suffix),admin);
+        String trolleyId=trolley.body().get("id").asText();
+        assertThat(call("GET","/api/v1/trolleys/available",null,creator).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/trolleys",null,creator).status()).isEqualTo(403);
+        assertThat(call("PUT",lotPath+"/trolley",java.util.Map.of("trolleyId",trolleyId),outsider).status()).isEqualTo(403);
+        Reply mapped=call("PUT",lotPath+"/trolley",java.util.Map.of("trolleyId",trolleyId),creator);
+        assertThat(mapped.status()).as(mapped.body().toString()).isEqualTo(200);
+        assertThat(mapped.body().get("trolley_id").asText()).isEqualTo(trolleyId);
+        String second=additional.body().get("items").get(0).get("id").asText();
+        assertThat(call("PUT","/api/v1/lots/"+second+"/trolley",java.util.Map.of("trolleyId",trolleyId),creator).status()).isEqualTo(409);
+        assertThat(call("DELETE",lotPath+"/trolley",null,outsider).status()).isEqualTo(403);
+        assertThat(call("DELETE",lotPath+"/trolley",null,creator).body().get("trolley_id").isNull()).isTrue();
+        assertThat(jdbc.queryForObject("select status from trolleys where id=?::uuid",String.class,trolleyId)).isEqualTo("AVAILABLE");
+        assertThat(call("DELETE",lotPath+"/trolley",null,creator).status()).isEqualTo(200);
+        jdbc.update("update trolleys set active=false where id=?::uuid",trolleyId);
+        assertThat(call("PUT",lotPath+"/trolley",java.util.Map.of("trolleyId",trolleyId),creator).status()).isEqualTo(409);
+        jdbc.update("update trolleys set active=true where id=?::uuid",trolleyId);
+        assertThat(call("PUT",lotPath+"/trolley",java.util.Map.of("trolleyId",trolleyId),creator).status()).isEqualTo(200);
+        jdbc.update("update lots set status='DISPATCHED' where id=?::uuid",lotId);
+        assertThat(call("DELETE",lotPath+"/trolley",null,creator).status()).isEqualTo(409);
+        assertThat(call("POST",lotPath+"/dispatch",null,creator).status()).isEqualTo(403);
     }
 
+    @Test void releaseWithUnspecifiedQuantityAndConcurrentLotBatchesUseGeneratedNumbers()throws Exception{
+        String suffix=UUID.randomUUID().toString();UUID actor=jdbc.queryForObject("select id from users where username='admin'",UUID.class),station=UUID.randomUUID(),process=UUID.randomUUID();
+        jdbc.update("insert into stations(id,code,name) values (?,?,?)",station,"GEN-S-"+suffix,"Generated station");
+        jdbc.update("insert into processes(id,code,name,station_id) values (?,?,?,?)",process,"GEN-P-"+suffix,"Generated process",station);
+        UUID style=production.createConfiguredStyle("GEN-"+suffix,"Optional quantity",actor,List.of(process),2,null);
+        assertThat(jdbc.queryForObject("select count(*) from lots where style_id=?",Integer.class,style)).isZero();
+        production.release(style);
+        assertThat(jdbc.queryForObject("select count(*) from lots where style_id=? and quantity is null and original_quantity is null",Integer.class,style)).isEqualTo(2);
+        try(var executor=java.util.concurrent.Executors.newFixedThreadPool(2)){
+            var a=executor.submit(()->production.createLots(style,3,7,actor));
+            var b=executor.submit(()->production.createLots(style,3,9,actor));
+            assertThat(a.get()).hasSize(3);assertThat(b.get()).hasSize(3);
+        }
+        assertThat(jdbc.queryForObject("select count(distinct lot_number) from lots where style_id=?",Integer.class,style)).isEqualTo(8);
+        assertThat(jdbc.queryForObject("select count(*) from lots where style_id=? and quantity=7",Integer.class,style)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("select count(*) from lots where style_id=? and quantity=9",Integer.class,style)).isEqualTo(3);
+        assertThat(jdbc.queryForObject("select count(*) from station_visits where lot_id in(select id from lots where style_id=?)",Integer.class,style)).isEqualTo(8);
+        revisions.revise(style,"Quantity now specified",List.of(process),11,"Record quantities",StyleRevisionService.Scope.UNSTARTED,actor,"NW");
+        assertThat(jdbc.queryForObject("select count(*) from lots where style_id=? and quantity=11",Integer.class,style)).isEqualTo(8);
+        assertThat(jdbc.queryForObject("select count(*) from lot_quantity_changes where lot_id in(select id from lots where style_id=?) and old_quantity is null",Integer.class,style)).isEqualTo(2);
+        UUID invalid=production.createConfiguredStyle("INVALID-"+suffix,null,actor,List.of(),2,null);
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->production.release(invalid)).isInstanceOf(com.yesbee.nwtrack.shared.BusinessRuleException.class);
+        assertThat(jdbc.queryForObject("select status from styles where id=?",String.class,invalid)).isEqualTo("DRAFT");
+        assertThat(jdbc.queryForObject("select count(*) from lots where style_id=?",Integer.class,invalid)).isZero();
+    }
     @Test void v21ModuleIsolationDynamicRolesOwnershipAndScopedLookups()throws Exception{
         String admin=login("admin","PC"),suffix=UUID.randomUUID().toString().substring(0,8);
         assertThat(call("GET","/api/v1/modules",null,admin).body().get("items").size()).isGreaterThanOrEqualTo(9);
@@ -350,7 +419,7 @@ class PostgresWorkflowIntegrationTest {
         jdbc.update("insert into machines(id,station_id,process_id,name,machine_type) values (?,?,?,?,?)",otherDevice,station,otherProcess,"Other device","QC");
         nfc.registerAndAssign("OTHER-Q-TAG-"+suffix,"MACHINE",otherDevice,actor,"Test");
         UUID style=production.createStyle("QSTYLE-"+suffix,"QC",actor);production.setProcesses(style,List.of(process));production.release(style);
-        UUID lot=production.createLot(style,"QLOT-"+suffix,10,actor);
+        UUID lot=production.createLot(style,10,actor);
         UUID visit=jdbc.queryForObject("select id from station_visits where lot_id=?",UUID.class,lot),execution=jdbc.queryForObject("select id from process_executions where station_visit_id=?",UUID.class,visit);
         jdbc.update("update station_visits set status='RECEIVED' where id=?",visit);
         org.assertj.core.api.Assertions.assertThatThrownBy(()->machines.transition(execution,"start",null,null,List.of("Q-TAG-"+suffix,"Q-TAG-"+suffix),actor)).hasMessageContaining("exactly one");
@@ -364,6 +433,14 @@ class PostgresWorkflowIntegrationTest {
         assertThat(jdbc.queryForObject("select status from lots where id=?",String.class,lot)).isEqualTo("COMPLETED");
         assertThat(jdbc.queryForObject("select rejected_quantity from qc_inspections where lot_id=?",Integer.class,lot)).isEqualTo(2);
         assertThat(jdbc.queryForObject("select status from machines where id=?",String.class,device)).isEqualTo("AVAILABLE");
+        UUID unspecified=production.createLot(style,null,actor);
+        UUID optionalVisit=jdbc.queryForObject("select id from station_visits where lot_id=?",UUID.class,unspecified);
+        UUID optionalExecution=jdbc.queryForObject("select id from process_executions where station_visit_id=?",UUID.class,optionalVisit);
+        jdbc.update("update station_visits set status='RECEIVED' where id=?",optionalVisit);
+        machines.transition(optionalExecution,"start",null,null,List.of("Q-TAG-"+suffix),actor);
+        machines.completeQuality(optionalExecution,4,1,"One damaged piece",actor);
+        assertThat(jdbc.queryForObject("select quantity from lots where id=?",Integer.class,unspecified)).isEqualTo(5);
+        assertThat(jdbc.queryForObject("select original_quantity is null from lots where id=?",Boolean.class,unspecified)).isTrue();
     }
 
     @Test void offlineEventsEnforceScansAndCommitIdempotently()throws Exception{
@@ -373,7 +450,7 @@ class PostgresWorkflowIntegrationTest {
         assertThat(process.status()).as(process.body().toString()).isEqualTo(200);
         UUID actor=jdbc.queryForObject("select id from users where username='admin'",UUID.class),processId=UUID.fromString(process.body().get("id").asText());
         UUID style=production.createStyle("OFF-"+suffix,"No final QC",actor);production.setProcesses(style,List.of(processId));production.release(style);
-        UUID lot=production.createLot(style,"OFFLOT-"+suffix,5,actor),visit=jdbc.queryForObject("select id from station_visits where lot_id=?",UUID.class,lot),execution=jdbc.queryForObject("select id from process_executions where station_visit_id=?",UUID.class,visit);
+        UUID lot=production.createLot(style,5,actor),visit=jdbc.queryForObject("select id from station_visits where lot_id=?",UUID.class,lot),execution=jdbc.queryForObject("select id from process_executions where station_visit_id=?",UUID.class,visit);
         jdbc.update("update station_visits set status='RECEIVED' where id=?",visit);
         var event=new java.util.LinkedHashMap<String,Object>();event.put("id",UUID.randomUUID().toString());event.put("aggregateType","PROCESS_EXECUTION");event.put("aggregateId",execution.toString());event.put("eventType","PROCESS_START");event.put("occurredAt","2026-11-03T00:00:00Z");
         Reply missingScan=call("POST","/api/v1/sync/events",java.util.Map.of("deviceId","pad-test","events",List.of(event)),admin);
@@ -502,8 +579,8 @@ class PostgresWorkflowIntegrationTest {
         jdbc.update("update processes set nfc_mode='DEVICES' where id=?",p1);jdbc.update("update processes set quality=true where id=?",p2);
         UUID style=production.createStyle("STYLE-IT","integration",actor);
         production.setProcesses(style,List.of(p1,p2));production.release(style);
-        UUID lot=production.createLot(style,"LOT-IT",25,actor);
-        UUID pendingLot=production.createLot(style,"LOT-IT-PENDING",25,actor);
+        UUID lot=production.createLot(style,25,actor);
+        UUID pendingLot=production.createLot(style,25,actor);
         assertThat(jdbc.queryForObject("select count(*) from station_visits where lot_id=?",Integer.class,lot)).isEqualTo(2);
         assertThat(jdbc.queryForObject("select count(*) from process_executions pe join station_visits sv on sv.id=pe.station_visit_id where sv.lot_id=?",Integer.class,lot)).isEqualTo(2);
 
