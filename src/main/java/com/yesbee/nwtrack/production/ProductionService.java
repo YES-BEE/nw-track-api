@@ -55,7 +55,22 @@ public class ProductionService {
         jdbc.update("insert into lot_quantity_changes(lot_id,old_quantity,new_quantity,actor_id,reason) values (?,?,?,?,?)",lotId,previous,quantity,actor,reason.trim());
         jdbc.update("insert into audit_log(actor_id,action,object_type,object_id,outcome,reason,detail) values (?,'UPDATE_QUANTITY','LOT',?,'SUCCESS',?,jsonb_build_object('oldQuantity',?::integer,'newQuantity',?::integer))",actor,lotId,reason.trim(),previous,quantity);
     }
-    @Transactional public void cancelLot(UUID lotId,String reason,UUID actor){String status=jdbc.queryForObject("select status from lots where id=? for update",String.class,lotId);if("COMPLETED".equals(status))throw new BusinessRuleException("COMPLETED_LOT_IMMUTABLE","A completed Lot cannot be cancelled");jdbc.update("update lot_trolley_assignments set released_at=now(),released_by=? where lot_id=? and released_at is null",actor,lotId);jdbc.update("update storage_occupancies set retrieved_at=now(),retrieved_by=? where lot_id=? and retrieved_at is null",actor,lotId);jdbc.update("update lots set status='CANCELLED',current_location_type='CANCELLED',current_location_id=null,cancelled_at=now(),cancellation_reason=?,version=version+1 where id=?",reason,lotId);jdbc.update("insert into audit_log(actor_id,action,object_type,object_id,outcome,reason) values (?,'CANCEL','LOT',?,'SUCCESS',?)",actor,lotId,reason);}
+    @Transactional public void cancelLot(UUID lotId,String reason,UUID actor){
+        String status=jdbc.queryForObject("select status from lots where id=? for update",String.class,lotId);
+        if("COMPLETED".equals(status))throw new BusinessRuleException("COMPLETED_LOT_IMMUTABLE","A completed Lot cannot be cancelled");
+        if("CANCELLED".equals(status))return;
+        var assignments=jdbc.queryForList("select id,trolley_id from lot_trolley_assignments where lot_id=? and released_at is null for update",lotId);
+        for(var assignment:assignments){
+            UUID trolley=(UUID)assignment.get("trolley_id");
+            jdbc.queryForObject("select id from trolleys where id=? for update",UUID.class,trolley);
+            jdbc.update("update lot_trolley_assignments set released_at=now(),released_by=? where id=?",actor,assignment.get("id"));
+            jdbc.update("update trolleys set status=case when active then 'AVAILABLE' else 'INACTIVE' end,version=version+1 where id=?",trolley);
+        }
+        jdbc.update("update storage_occupancies set retrieved_at=now(),retrieved_by=? where lot_id=? and retrieved_at is null",actor,lotId);
+        jdbc.update("update lots set status='CANCELLED',current_location_type='CANCELLED',current_location_id=null,cancelled_at=now(),cancellation_reason=?,version=version+1 where id=?",reason,lotId);
+        jdbc.update("insert into lot_location_events(lot_id,location_type,actor_id,detail) values (?,'CANCELLED',?,jsonb_build_object('reason',?::text))",lotId,actor,reason);
+        jdbc.update("insert into audit_log(actor_id,action,object_type,object_id,outcome,reason) values (?,'CANCEL','LOT',?,'SUCCESS',?)",actor,lotId,reason);
+    }
 
     // Called inside the creation/release transaction; style then clock is the
     // common lock order. Both reservations roll back if lot creation fails.

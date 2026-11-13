@@ -63,6 +63,7 @@ Legacy `storageOccupancies` and `availableTrolleys` fields remain in the summary
 | Current Route Step | `current_route_sequence` |
 | Location | `location_label`; raw `current_location_type` and `current_location_id` are preserved |
 | Created / Completed At | `created_at`, `completed_at` |
+| Progress bar | `progress_percent` (0–100); `completed_processes` and `total_processes` explain the calculation |
 | Actions | Use `id` in the read-only View endpoint |
 
 Current process is selected from the current route step: active first, then paused,
@@ -94,3 +95,67 @@ on failure retain the last successful timestamp and indicate stale/offline data.
 
 These are backend contracts and integration guidance; the display UI must wire these
 fields and polling requests into the agreed screen.
+
+## Lot and style progress reports
+
+The ID-specific reports have been replaced with:
+
+- GET `/api/v1/reports/style-progress`: paginated styles, including styles with no lots,
+  with `lot_count`, `completed_lots`, and `progress_percent`.
+- GET `/api/v1/reports/lot-progress`: paginated lots with the same fields as dashboard
+  lot rows, including progress, style, current station/process, and location.
+
+Neither request requires a style ID or lot ID. Both accept `page`, `size` (1–100),
+and optional `search`; fetch subsequent pages to populate client-side filters.
+Responses use `items`, `page`, `size`, and `totalElements`. Reports require Reports
+access and preserve account ownership and station restrictions. UI clients must
+replace `/styles/{id}/progress` and `/reports/lot-history?lotId=...` with the new
+collection endpoints. Lot event history remains available through `/lots/{id}/timeline`
+with Lot Management access.
+
+Each effective process has equal weight. `completed_processes` counts completed and
+intentionally skipped steps; steps superseded by a manager route revision are omitted
+from both counts. `progress_percent` is that count divided by `total_processes`, times
+100, rounded to two decimals. Unstarted/no-process lots return 0; completed lots return
+100. Cancelled lots retain the percentage reached and their CANCELLED status.
+Style progress is the arithmetic mean of its visible lots' percentages, including
+cancelled lots; styles without lots return 0. Garment quantities do not weight progress.
+
+## Today's production trend
+
+Both `/dashboard` and `/displays/factory-summary` include `productionTrend`:
+
+```json
+{
+  "date": "2026-11-13",
+  "timezone": "Asia/Kolkata",
+  "interval": "HOUR",
+  "points": [
+    {"bucket_start": "2026-11-13T08:00:00+05:30",
+     "bucket_end": "2026-11-13T09:00:00+05:30",
+     "completed": 8, "in_progress": 24}
+  ]
+}
+```
+
+The example illustrates one point; the response includes every elapsed hour from
+local midnight through the current hour, including zero counts. Future hours are
+omitted. `completed` counts lots completed within that hour (not cumulative).
+`in_progress` counts lots first dispatched by the bucket end and not completed or
+cancelled by then, including work carried over from previous days and stored lots.
+READY lots awaiting their first dispatch are excluded. Historical WIP uses each
+lot's earliest recorded dispatch and terminal timestamps, rather than its current
+status. Legacy lots missing a dispatch timestamp cannot contribute to historical WIP.
+The current bucket ends at `snapshotAt`; other buckets end at the next hour.
+Bucket timestamps are instants; format them in the supplied factory timezone.
+
+Set `FACTORY_TIMEZONE` to the factory's IANA timezone (default `Asia/Kolkata`). Counts
+respect lot visibility and are independent of station pagination/search. Plot
+`completed` and `in_progress` as the two lines shown in the dashboard image.
+
+## Cancellation and trolley availability
+
+Cancelling a lot releases its trolley assignment and sets an active trolley to
+AVAILABLE in the same transaction. An inactive trolley remains INACTIVE. Repeated
+cancellation cannot release a later lot's assignment. The upgrade also repairs old
+IN_USE trolley statuses when there is no active assignment.

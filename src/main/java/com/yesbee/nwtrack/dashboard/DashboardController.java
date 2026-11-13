@@ -2,6 +2,7 @@ package com.yesbee.nwtrack.dashboard;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -11,6 +12,7 @@ import com.yesbee.nwtrack.shared.Pages;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.*;
 
 @RestController @RequestMapping("/api/v1") @Tag(name="Dashboard and displays")
@@ -18,7 +20,11 @@ import java.util.*;
 public class DashboardController {
     private final JdbcTemplate jdbc;
     private final com.yesbee.nwtrack.auth.AccessPolicy access;
-    public DashboardController(JdbcTemplate jdbc,com.yesbee.nwtrack.auth.AccessPolicy access){this.jdbc=jdbc;this.access=access;}
+    private final ZoneId factoryZone;
+    public DashboardController(JdbcTemplate jdbc,com.yesbee.nwtrack.auth.AccessPolicy access,
+            @Value("${nwtrack.factory-timezone:Asia/Kolkata}") String factoryTimezone){
+        this.jdbc=jdbc;this.access=access;this.factoryZone=ZoneId.of(factoryTimezone);
+    }
 
     @GetMapping("/dashboard")
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
@@ -46,6 +52,7 @@ public class DashboardController {
         metrics.put("highestStationWorkload",highest.isEmpty()?null:highest.getFirst());
         result.put("metrics",metrics);result.put("styles",styleCounts);result.put("lots",lotCounts);
         result.put("stations",stationWip());result.put("storageOccupancies",stored);result.put("availableTrolleys",available);
+        result.put("productionTrend",productionTrend());
         return result;
     }
     private long count(List<Map<String,Object>> rows,String status){return rows.stream().filter(row->status.equals(row.get("status"))).mapToLong(row->((Number)row.get("count")).longValue()).sum();}
@@ -57,19 +64,54 @@ public class DashboardController {
     }
     @GetMapping({"/dashboard/lots/{id}","/displays/lots/{id}"})
     public Map<String,Object> lotDetail(@PathVariable UUID id){access.lot(id);return jdbc.queryForMap(LOT_VIEW+" where l.id=?",id);}
-    @GetMapping("/styles/{id}/progress") public Map<String,Object> progress(@PathVariable UUID id){Map<String,Object> result=new LinkedHashMap<>(jdbc.queryForMap("select id,style_number,status,created_at,released_at from styles where id=?",id));result.put("lots",Pages.query(jdbc,LOT_VIEW+" where l.style_id=? and "+access.lotPredicate("l.id")+" order by l.created_at,l.id",id));return result;}
+    @GetMapping("/reports/style-progress")
+    public ApiPage<Map<String,Object>> styleProgress(){
+        return Pages.query(jdbc,"select s.id,s.style_number,s.status,s.created_at,s.released_at,"+
+            "count(v.id) lot_count,count(v.id) filter(where v.status='COMPLETED') completed_lots,"+
+            "coalesce(round(avg(v.progress_percent),2),0) progress_percent from styles s left join ("+
+            LOT_VIEW+" where "+access.lotPredicate("l.id")+") v on v.style_id=s.id where "+
+            access.stylePredicate("s")+" group by s.id order by s.created_at desc,s.id");
+    }
+    @GetMapping("/reports/lot-progress")
+    public ApiPage<Map<String,Object>> lotProgress(){
+        return Pages.query(jdbc,LOT_VIEW+" where "+access.lotPredicate("l.id")+" order by l.created_at desc,l.id");
+    }
     @GetMapping("/stations/{id}/work-in-progress") public ApiPage<Map<String,Object>> station(@PathVariable UUID id){return Pages.query(jdbc,LOT_VIEW+" join station_visits sv2 on sv2.lot_id=l.id where sv2.station_id=? and sv2.status in ('DISPATCHED','RECEIVED','ACTIVE','READY_FOR_DISPATCH') and "+access.lotPredicate("l.id")+" and l.status not in ('COMPLETED','CANCELLED') order by l.created_at,l.id",id);}
-    @GetMapping("/reports/lot-history") public ApiPage<Map<String,Object>> history(@RequestParam UUID lotId){return Pages.query(jdbc,"select e.id,e.location_type,e.location_id,e.actor_id,e.occurred_at,e.detail from lot_location_events e where e.lot_id=? order by e.occurred_at,e.id",lotId);}
     @GetMapping("/displays/factory-summary")
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public Map<String,Object> factoryDisplay(){return summary();}
     @GetMapping("/displays/stations/{id}") public Map<String,Object> stationDisplay(@PathVariable UUID id){Map<String,Object> result=new LinkedHashMap<>(jdbc.queryForMap("select id,code,name,station_type,is_qc,is_station_zero from stations where id=?",id));result.put("incoming",Pages.query(jdbc,"select sv.id visit_id,l.id lot_id,l.lot_number,s.style_number,sv.dispatched_at from station_visits sv join lots l on l.id=sv.lot_id join styles s on s.id=l.style_id where sv.station_id=? and sv.status='DISPATCHED' and l.status not in ('COMPLETED','CANCELLED') and "+access.lotPredicate("l.id")+" order by sv.dispatched_at,sv.id",id));result.put("workInProgress",station(id));return result;}
     private List<Map<String,Object>> counts(String sql){return jdbc.queryForList(sql);}
+    private Map<String,Object> productionTrend(){
+        var now=jdbc.queryForObject("select transaction_timestamp()",OffsetDateTime.class).atZoneSameInstant(factoryZone);
+        var start=now.toLocalDate().atStartOfDay(factoryZone);
+        var points=jdbc.queryForList("""
+            with visible_lots as (
+              select l.completed_at,l.cancelled_at,
+                (select min(sv.dispatched_at) from station_visits sv where sv.lot_id=l.id) started_at
+              from lots l where %s
+            ), buckets as (
+              select tick bucket_start,least(tick+interval '1 hour',?::timestamptz) bucket_end
+              from generate_series(?::timestamptz,?::timestamptz,interval '1 hour') tick
+            )
+            select b.bucket_start,b.bucket_end,
+              (select count(*) from visible_lots l where l.completed_at>=b.bucket_start
+                 and l.completed_at<b.bucket_start+interval '1 hour' and l.completed_at<=?::timestamptz) completed,
+              (select count(*) from visible_lots l where l.started_at<=b.bucket_end
+                 and (l.completed_at is null or l.completed_at>b.bucket_end)
+                 and (l.cancelled_at is null or l.cancelled_at>b.bucket_end)) in_progress
+            from buckets b order by b.bucket_start
+            """.formatted(access.lotPredicate("l.id")),now.toOffsetDateTime(),start.toOffsetDateTime(),
+                now.withMinute(0).withSecond(0).withNano(0).toOffsetDateTime(),now.toOffsetDateTime());
+        return Map.of("date",start.toLocalDate(),"timezone",factoryZone.getId(),"interval","HOUR","points",points);
+    }
     private String stationSql(){return "select s.id,s.code,s.name,count(sv.id) wip from stations s left join station_visits sv on sv.station_id=s.id and sv.status in ('DISPATCHED','RECEIVED','ACTIVE','READY_FOR_DISPATCH') and exists(select 1 from lots scoped_l where scoped_l.id=sv.lot_id and scoped_l.status not in ('COMPLETED','CANCELLED') and "+access.lotPredicate("scoped_l.id")+") where "+access.stationPredicate("s.id")+" group by s.id";}
     private ApiPage<Map<String,Object>> stationWip(){return Pages.query(jdbc,"select station_counts.*,coalesce(round(100.0*wip/nullif(sum(wip) over (),0),2),0) share_percent from ("+stationSql()+") station_counts order by code,id");}
     private static final String LOT_VIEW="""
         select l.id,l.lot_number,l.quantity,l.status,l.current_route_sequence,l.current_location_type,l.current_location_id,l.created_at,l.completed_at,
          s.id style_id,s.style_number,
+         case when l.status='COMPLETED' then 100.00 else coalesce(round(100.0*pr.completed_processes/nullif(pr.total_processes,0),2),0) end progress_percent,
+         pr.completed_processes,pr.total_processes,
          (select st.code from station_visits sv join stations st on st.id=sv.station_id join lot_route_entries lr on lr.id=sv.lot_route_entry_id where sv.lot_id=l.id and lr.sequence_no=l.current_route_sequence) current_station,
          cp.process_id current_process_id,cp.name current_process,cp.status current_process_status,
          case l.current_location_type
@@ -78,6 +120,11 @@ public class DashboardController {
           when 'STORAGE' then (select coalesce(nullif(sl.name,''),sl.code) from storage_locations sl where sl.id=l.current_location_id)
           when 'COMPLETED' then 'Completed' when 'CANCELLED' then 'Cancelled' else null end location_label
         from lots l join styles s on s.id=l.style_id
+        left join lateral (
+         select count(*) total_processes,count(*) filter(where pe.status in ('COMPLETED','SKIPPED')) completed_processes
+         from process_executions pe join station_visits sv on sv.id=pe.station_visit_id
+         where sv.lot_id=l.id and not (pe.status='SKIPPED' and coalesce(pe.reason,'') like 'Superseded by Manager route revision:%')
+        ) pr on true
         left join lateral (
          select pe.process_id,p.name,pe.status from process_executions pe join processes p on p.id=pe.process_id
          join station_visits sv on sv.id=pe.station_visit_id join lot_route_entries lr on lr.id=sv.lot_route_entry_id

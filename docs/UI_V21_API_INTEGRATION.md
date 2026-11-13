@@ -543,7 +543,7 @@ Style Configurator's newstyle grant is preserved even though the dummy excludes 
 
 ## 12. Dashboard, Reports and placeholders
 
-Current dashboard()/reports() render Work in Progress; there are no KPI/filter controls to map yet. Available future APIs: GET /api/v1/dashboard and /dashboard/lots?status=... (dashboard module), GET /api/v1/reports/lot-history?lotId=... and /styles/{id}/progress (reports module). These grants are independent. Custom content returns key/name/status WORK_IN_PROGRESS/message; it has no business data APIs yet.
+Current dashboard()/reports() render Work in Progress; there are no KPI/filter controls to map yet. Available APIs: GET /api/v1/dashboard (including today's hourly productionTrend) and /dashboard/lots?status=... (including progress_percent; dashboard module), GET /api/v1/reports/lot-progress and /reports/style-progress (reports module; paginated, no required IDs). These grants are independent. See DASHBOARD_DISPLAY.md for field definitions. Custom content returns key/name/status WORK_IN_PROGRESS/message; it has no business data APIs yet.
 
 ## 13. Errors and state refresh
 

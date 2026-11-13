@@ -3839,7 +3839,7 @@
                                                   }
                                   },
                                   {
-                                      "name":  "GET /api/v1/styles/{id}/progress",
+                                      "name":  "GET /api/v1/reports/style-progress",
                                       "request":  {
                                                       "method":  "GET",
                                                       "header":  [
@@ -3849,16 +3849,15 @@
                                                                      }
                                                                  ],
                                                       "url":  {
-                                                                  "raw":  "{{baseUrl}}/api/v1/styles/{{styleId}}/progress",
+                                                                  "raw":  "{{baseUrl}}/api/v1/reports/style-progress",
                                                                   "host":  [
                                                                                "{{baseUrl}}"
                                                                            ],
                                                                   "path":  [
                                                                                "api",
                                                                                "v1",
-                                                                               "styles",
-                                                                               "{{styleId}}",
-                                                                               "progress"
+                                                                               "reports",
+                                                                               "style-progress"
                                                                            ]
                                                               },
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history."
@@ -3891,7 +3890,7 @@
                                                   }
                                   },
                                   {
-                                      "name":  "GET /api/v1/reports/lot-history",
+                                      "name":  "GET /api/v1/reports/lot-progress",
                                       "request":  {
                                                       "method":  "GET",
                                                       "header":  [
@@ -3901,7 +3900,7 @@
                                                                      }
                                                                  ],
                                                       "url":  {
-                                                                  "raw":  "{{baseUrl}}/api/v1/reports/lot-history?lotId={{lotId}}",
+                                                                  "raw":  "{{baseUrl}}/api/v1/reports/lot-progress",
                                                                   "host":  [
                                                                                "{{baseUrl}}"
                                                                            ],
@@ -3909,14 +3908,8 @@
                                                                                "api",
                                                                                "v1",
                                                                                "reports",
-                                                                               "lot-history"
-                                                                           ],
-                                                                  "query":  [
-                                                                                {
-                                                                                    "key":  "lotId",
-                                                                                    "value":  "{{lotId}}"
-                                                                                }
-                                                                            ]
+                                                                               "lot-progress"
+                                                                           ]
                                                               },
                                                       "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history."
                                                   }

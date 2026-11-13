@@ -84,7 +84,13 @@ class PostgresWorkflowIntegrationTest {
         UUID style=UUID.randomUUID(),other=UUID.randomUUID(),lot=UUID.randomUUID();
         legacy.update("insert into styles(id,style_number,status) values (?,'OLD','RELEASED'),(?,'NEW','DRAFT')",style,other);
         legacy.update("insert into lots(id,style_id,lot_number,quantity,status) values (?,?,?,5,'READY')",lot,style,"LOT-1700000000000-47");
+        UUID stale=UUID.randomUUID(),inactive=UUID.randomUUID(),occupied=UUID.randomUUID();
+        legacy.update("insert into trolleys(id,code,status,active) values (?,'STALE','IN_USE',true),(?,'INACTIVE','IN_USE',false),(?,'OCCUPIED','IN_USE',true)",stale,inactive,occupied);
+        legacy.update("insert into lot_trolley_assignments(id,lot_id,trolley_id) values (?,?,?)",UUID.randomUUID(),lot,occupied);
         org.flywaydb.core.Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).load().migrate();
+        assertThat(legacy.queryForObject("select status from trolleys where id=?",String.class,stale)).isEqualTo("AVAILABLE");
+        assertThat(legacy.queryForObject("select status from trolleys where id=?",String.class,inactive)).isEqualTo("INACTIVE");
+        assertThat(legacy.queryForObject("select status from trolleys where id=?",String.class,occupied)).isEqualTo("IN_USE");
         assertThat(legacy.queryForObject("select lot_number from lots where id=?",String.class,lot)).isEqualTo("LOT-1700000000000-47");
         assertThat(legacy.queryForObject("select last_lot_sequence from styles where id=?",Long.class,style)).isEqualTo(47L);
         assertThat(legacy.queryForObject("update styles set last_lot_sequence=last_lot_sequence+1 where id=? returning last_lot_sequence",Long.class,style)).isEqualTo(48L);
@@ -157,6 +163,108 @@ class PostgresWorkflowIntegrationTest {
         assertThat(call("GET","/api/v1/dashboard/lots/"+ids.get(0),null,scopedToken).status()).isEqualTo(403);
         assertThat(call("GET","/api/v1/displays/lots/"+ids.get(0),null,scopedToken).status()).isEqualTo(403);
         assertThat(call("GET","/api/v1/displays/factory-summary",null,scopedToken).body().get("metrics").get("totalLots").asInt()).isZero();
+    }
+
+    @Test void cancellationReleasesTrolleyForReuseAndCannotReleaseItsNextAssignment()throws Exception{
+        UUID actor=jdbc.queryForObject("select id from users where username='admin'",UUID.class);
+        String suffix=UUID.randomUUID().toString();UUID station=UUID.randomUUID(),process=UUID.randomUUID(),trolley=UUID.randomUUID();
+        jdbc.update("insert into stations(id,code,name) values (?,?,'Cancel station')",station,"CANCEL-S-"+suffix);
+        jdbc.update("insert into processes(id,code,name,station_id) values (?,?,'Cancel process',?)",process,"CANCEL-P-"+suffix,station);
+        UUID style=production.createConfiguredStyle("CANCEL-"+suffix,null,actor,List.of(process));production.release(style);
+        UUID first=production.createLot(style,null,actor),next=production.createLot(style,null,actor);
+        jdbc.update("insert into trolleys(id,code) values (?,?)",trolley,"CANCEL-T-"+suffix);
+        operations.linkTrolley(first,trolley,actor);production.cancelLot(first,"Cancelled",actor);
+        assertThat(jdbc.queryForObject("select status from trolleys where id=?",String.class,trolley)).isEqualTo("AVAILABLE");
+        assertThat(jdbc.queryForObject("select count(*) from lot_trolley_assignments where lot_id=? and released_at is null",Integer.class,first)).isZero();
+        operations.linkTrolley(next,trolley,actor);
+        production.cancelLot(first,"Repeated request",actor);
+        assertThat(jdbc.queryForObject("select status from trolleys where id=?",String.class,trolley)).isEqualTo("IN_USE");
+        assertThat(jdbc.queryForObject("select lot_id from lot_trolley_assignments where trolley_id=? and released_at is null",UUID.class,trolley)).isEqualTo(next);
+        jdbc.update("update trolleys set active=false where id=?",trolley);
+        production.cancelLot(next,"Inactive trolley",actor);
+        assertThat(jdbc.queryForObject("select status from trolleys where id=?",String.class,trolley)).isEqualTo("INACTIVE");
+    }
+
+    @Test void progressReportsArePagedAndDashboardProgressUsesOnlyEffectiveProcesses()throws Exception{
+        String admin=login("admin","PC"),suffix=UUID.randomUUID().toString();
+        UUID actor=jdbc.queryForObject("select id from users where username='admin'",UUID.class),station=UUID.randomUUID();
+        jdbc.update("insert into stations(id,code,name) values (?,?,'Progress station')",station,"PROG-S-"+suffix);
+        List<UUID> processes=List.of(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID());
+        for(int i=0;i<processes.size();i++)jdbc.update("insert into processes(id,code,name,station_id) values (?,?,'Progress process',?)",processes.get(i),"PROG-P-"+i+suffix,station);
+        UUID style=production.createConfiguredStyle("PROG-"+suffix,null,actor,processes);production.release(style);
+        UUID lot=production.createLot(style,null,actor),untouched=production.createLot(style,null,actor);
+        jdbc.update("update process_executions set status='COMPLETED' where process_id=? and station_visit_id in(select id from station_visits where lot_id=?)",processes.get(0),lot);
+        jdbc.update("update process_executions set status='SKIPPED',reason='Intentional skip' where process_id=? and station_visit_id in(select id from station_visits where lot_id=?)",processes.get(1),lot);
+        jdbc.update("update process_executions set status='SKIPPED',reason='Superseded by Manager route revision: test' where process_id=? and station_visit_id in(select id from station_visits where lot_id=?)",processes.get(2),lot);
+        var detail=call("GET","/api/v1/dashboard/lots/"+lot,null,admin);
+        assertThat(detail.status()).as(detail.body().toString()).isEqualTo(200);
+        assertThat(detail.body().get("progress_percent").asDouble()).isEqualTo(66.67);
+        assertThat(detail.body().get("completed_processes").asInt()).isEqualTo(2);
+        assertThat(detail.body().get("total_processes").asInt()).isEqualTo(3);
+        var report=call("GET","/api/v1/reports/lot-progress?search=PROG-"+suffix+"&size=1",null,admin);
+        assertThat(report.status()).as(report.body().toString()).isEqualTo(200);
+        assertThat(report.body().get("totalElements").asInt()).isEqualTo(2);
+        assertThat(report.body().get("items").size()).isEqualTo(1);
+        var page2=call("GET","/api/v1/reports/lot-progress?search=PROG-"+suffix+"&size=1&page=1",null,admin);
+        assertThat(page2.body().get("items").get(0).get("id")).isNotEqualTo(report.body().get("items").get(0).get("id"));
+        var styles=call("GET","/api/v1/reports/style-progress?search=PROG-"+suffix,null,admin);
+        assertThat(styles.status()).as(styles.body().toString()).isEqualTo(200);
+        assertThat(styles.body().get("totalElements").asInt()).isEqualTo(1);
+        assertThat(styles.body().get("items").get(0).get("progress_percent").asDouble()).isEqualTo(33.34);
+        production.createConfiguredStyle("EMPTY-"+suffix,null,actor,processes);
+        var empty=call("GET","/api/v1/reports/style-progress?search=EMPTY-"+suffix,null,admin).body().get("items").get(0);
+        assertThat(empty.get("lot_count").asInt()).isZero();
+        assertThat(empty.get("progress_percent").asInt()).isZero();
+        assertThat(call("GET","/api/v1/displays/lots/"+untouched,null,admin).body().get("progress_percent").asInt()).isZero();
+        jdbc.update("update lots set status='COMPLETED',completed_at=now() where id=?",untouched);
+        assertThat(call("GET","/api/v1/displays/lots/"+untouched,null,admin).body().get("progress_percent").asInt()).isEqualTo(100);
+        String scopedName="progress-reader-"+suffix;
+        assertThat(call("POST","/api/v1/users",java.util.Map.of("username",scopedName,"displayName",scopedName,"initialPassword","ChangeMe123!","role","SUPERVISOR"),admin).status()).isEqualTo(200);
+        String scoped=login(scopedName,"PC");
+        for(String path:List.of("/api/v1/reports/style-progress","/api/v1/reports/lot-progress")){
+            var restricted=call("GET",path,null,scoped);
+            assertThat(restricted.status()).as(restricted.body().toString()).isEqualTo(200);
+            assertThat(restricted.body().get("totalElements").asInt()).isZero();
+        }
+    }
+
+    @Test void productionTrendUsesFactoryDayAndHistoricalWorkInProgress()throws Exception{
+        String admin=login("admin","PC"),suffix=UUID.randomUUID().toString();
+        UUID actor=jdbc.queryForObject("select id from users where username='admin'",UUID.class),station=UUID.randomUUID(),process=UUID.randomUUID();
+        jdbc.update("insert into stations(id,code,name) values (?,?,'Trend station')",station,"TREND-S-"+suffix);
+        jdbc.update("insert into processes(id,code,name,station_id) values (?,?,'Trend process',?)",process,"TREND-P-"+suffix,station);
+        UUID style=production.createConfiguredStyle("TREND-"+suffix,null,actor,List.of(process));production.release(style);
+        var ids=production.createLots(style,4,null,actor);
+        var now=jdbc.queryForObject("select now()",java.time.OffsetDateTime.class);
+        var start=now.atZoneSameInstant(java.time.ZoneId.of("Asia/Kolkata")).toLocalDate().atStartOfDay(java.time.ZoneId.of("Asia/Kolkata")).toOffsetDateTime();
+        // Three lots entered yesterday; one stays open, one completes and one cancels today.
+        for(UUID lot:ids.subList(0,3))jdbc.update("update station_visits set dispatched_at=? where lot_id=?",start.minusHours(1),lot);
+        jdbc.update("update lots set status='IN_PROCESS' where id=?",ids.get(0));
+        var terminal=start.plusHours(1).plusSeconds(1).isBefore(now)?start.plusHours(1).plusSeconds(1):start.plusSeconds(1);
+        jdbc.update("update lots set status='COMPLETED',completed_at=? where id=?",terminal,ids.get(1));
+        jdbc.update("update lots set status='CANCELLED',cancelled_at=? where id=?",terminal,ids.get(2));
+        String name="trend-reader-"+suffix;
+        assertThat(call("POST","/api/v1/users",java.util.Map.of("username",name,"displayName",name,"initialPassword","ChangeMe123!","role","SUPERVISOR","processAssignments",List.of(java.util.Map.of("processId",process,"activeOnShift",true))),admin).status()).isEqualTo(200);
+        String token=login(name,"PC");
+        var response=call("GET","/api/v1/dashboard?size=1&search=nonexistent",null,token);
+        assertThat(response.status()).as(response.body().toString()).isEqualTo(200);
+        var trend=response.body().get("productionTrend");
+        assertThat(trend.get("timezone").asText()).isEqualTo("Asia/Kolkata");
+        assertThat(trend.get("date").asText()).isEqualTo(start.toLocalDate().toString());
+        var points=trend.get("points");assertThat(points.size()).isBetween(1,24);
+        int totalCompleted=0;
+        for(var point:points){
+            totalCompleted+=point.get("completed").asInt();
+            var end=java.time.OffsetDateTime.parse(point.get("bucket_end").asText());
+            assertThat(point.get("in_progress").asInt()).isEqualTo(end.isBefore(terminal)?3:1);
+        }
+        assertThat(totalCompleted).isEqualTo(1);
+        int completedHour=(int)java.time.Duration.between(start,terminal).toHours();
+        assertThat(points.get(completedHour).get("completed").asInt()).isEqualTo(1);
+        assertThat(java.time.OffsetDateTime.parse(points.get(0).get("bucket_start").asText()).toInstant()).isEqualTo(start.toInstant());
+        var display=call("GET","/api/v1/displays/factory-summary",null,token).body().get("productionTrend");
+        assertThat(display.get("points").size()).isEqualTo(points.size());
+        assertThat(display.get("points").get(completedHour).get("completed").asInt()).isEqualTo(1);
     }
 
     @Test void userStatusIsManagedThroughCreateAndUpdateOnly()throws Exception{
@@ -403,12 +511,13 @@ class PostgresWorkflowIntegrationTest {
         assertThat(createdProcess.status()).as(createdProcess.body().toString()).isEqualTo(200);
         assertThat(call("GET","/api/v1/processes/"+createdProcess.body().get("id").asText(),null,token).status()).isEqualTo(200);
         assertThat(jdbc.queryForObject("select active_on_shift from user_process_assignments where user_id=?::uuid and process_id=?::uuid",Boolean.class,userId,createdProcess.body().get("id").asText())).isFalse();
-        for(String path:List.of("/api/v1/storage-areas","/api/v1/nfc-tags","/api/v1/users","/api/v1/access-roles","/api/v1/dashboard","/api/v1/reports/lot-history?lotId="+UUID.randomUUID()))assertThat(call("GET",path,null,token).status()).as(path).isEqualTo(403);
+        for(String path:List.of("/api/v1/storage-areas","/api/v1/nfc-tags","/api/v1/users","/api/v1/access-roles","/api/v1/dashboard","/api/v1/reports/lot-progress","/api/v1/reports/style-progress"))assertThat(call("GET",path,null,token).status()).as(path).isEqualTo(403);
         assertThat(call("GET","/api/v1/modules/"+moduleKey+"/content",null,token).body().get("status").asText()).isEqualTo("WORK_IN_PROGRESS");
         // Role changes affect existing JWTs immediately; Dashboard and Reports stay independent.
         assertThat(call("PUT","/api/v1/access-roles/"+code,java.util.Map.of("modules",List.of("dashboard")),admin).status()).isEqualTo(200);
         assertThat(call("GET","/api/v1/dashboard",null,token).status()).isEqualTo(200);
-        assertThat(call("GET","/api/v1/reports/lot-history?lotId="+UUID.randomUUID(),null,token).status()).isEqualTo(403);
+        assertThat(call("GET","/api/v1/reports/lot-progress",null,token).status()).isEqualTo(403);
+        assertThat(call("GET","/api/v1/reports/style-progress",null,token).status()).isEqualTo(403);
         assertThat(call("GET","/api/v1/processes",null,token).status()).isEqualTo(403);
         assertThat(call("GET","/api/v1/modules/"+moduleKey+"/content",null,token).status()).isEqualTo(403);
         assertThat(call("DELETE","/api/v1/access-roles/"+code,null,admin).status()).isEqualTo(409);
