@@ -63,7 +63,8 @@ class PostgresWorkflowIntegrationTest {
         }
         for(UUID style:List.of(a,b)){
             var numbers=jdbc.queryForList("select lot_number from lots where style_id=? order by lot_sequence",String.class,style);
-            assertThat(numbers.get(0)).matches("LOT-[0-9]{13}-001");
+            String prefix=jdbc.queryForObject("select style_number from styles where id=?",String.class,style).replaceAll("[^A-Za-z0-9]","");
+            assertThat(numbers.get(0)).isEqualTo("LOT-"+prefix+"-001");
             assertThat(numbers.get(1)).endsWith("-002");assertThat(numbers.get(2)).endsWith("-003");
         }
         assertThat(jdbc.queryForObject("select count(distinct lot_number) from lots where style_id in (?,?)",Integer.class,a,b)).isEqualTo(6);
@@ -76,6 +77,81 @@ class PostgresWorkflowIntegrationTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(()->jdbc.update("insert into lots(id,style_id,lot_number,lot_sequence,status) values (?,?,?,1,'READY')",UUID.randomUUID(),a,"DUP-"+suffix)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
 
+    @Test void styleBasedNumbersSanitizeAndContinueWithoutRenamingExistingLots()throws Exception{
+        UUID actor=jdbc.queryForObject("select id from users where username='admin'",UUID.class);
+        String suffix=UUID.randomUUID().toString().replace("-","");
+        UUID station=UUID.randomUUID(),process=UUID.randomUUID();
+        jdbc.update("insert into stations(id,code,name) values (?,?,'Prefix station')",station,"PREFIX-S-"+suffix);
+        jdbc.update("insert into processes(id,code,name,station_id) values (?,?,'Prefix process',?)",process,"PREFIX-P-"+suffix,station);
+        UUID style=production.createConfiguredStyle("AB / 12-"+suffix,null,actor,List.of(process));production.release(style);
+        UUID old=production.createLot(style,null,actor);
+        jdbc.update("update lots set lot_number='LOT-1700000000000-149',lot_sequence=149 where id=?",old);
+        jdbc.update("update styles set last_lot_sequence=149 where id=?",style);
+        UUID next=production.createLot(style,null,actor);
+        assertThat(jdbc.queryForObject("select lot_number from lots where id=?",String.class,next)).isEqualTo("LOT-AB12"+suffix+"-150");
+        assertThat(jdbc.queryForObject("select lot_number from lots where id=?",String.class,old)).isEqualTo("LOT-1700000000000-149");
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->production.createStyle("AB12"+suffix,null,actor))
+            .isInstanceOf(com.yesbee.nwtrack.shared.BusinessRuleException.class).hasMessageContaining("same lot prefix");
+        assertThat(jdbc.queryForObject("select count(*) from styles where style_number=?",Integer.class,"AB12"+suffix)).isZero();
+        org.assertj.core.api.Assertions.assertThatThrownBy(()->production.createStyle(" / - ",null,actor))
+            .isInstanceOf(com.yesbee.nwtrack.shared.BusinessRuleException.class).hasMessageContaining("letter or digit");
+        // Different styles that sanitize identically cannot both reserve a prefix concurrently.
+        try(var executor=java.util.concurrent.Executors.newFixedThreadPool(2)){
+            var a=executor.submit(()->{try{production.createStyle("RACE-"+suffix,null,actor);return true;}catch(com.yesbee.nwtrack.shared.BusinessRuleException ex){return false;}});
+            var b=executor.submit(()->{try{production.createStyle("RACE /"+suffix,null,actor);return true;}catch(com.yesbee.nwtrack.shared.BusinessRuleException ex){return false;}});
+            assertThat(List.of(a.get(),b.get())).containsExactlyInAnyOrder(true,false);
+        }
+    }
+
+    @Test void dashboardAndReportFiltersCombineAndOfferScopedSearchableOptions()throws Exception{
+        String admin=login("admin","PC"),suffix=UUID.randomUUID().toString();
+        UUID actor=jdbc.queryForObject("select id from users where username='admin'",UUID.class);
+        UUID s1=UUID.randomUUID(),s2=UUID.randomUUID(),p1=UUID.randomUUID(),p2=UUID.randomUUID();
+        jdbc.update("insert into stations(id,code,name) values (?,?,'First filter station'),(?,?,'Second filter station')",s1,"FILTER-S1-"+suffix,s2,"FILTER-S2-"+suffix);
+        jdbc.update("insert into processes(id,code,name,station_id) values (?,?,'First filter process',?),(?,?,'Second filter process',?)",p1,"FILTER-P1-"+suffix,s1,p2,"FILTER-P2-"+suffix,s2);
+        UUID style=production.createConfiguredStyle("FILTER-"+suffix,null,actor,List.of(p1,p2));production.release(style);
+        var ids=production.createLots(style,2,null,actor);
+        String filters="styleId="+style;
+        for(String path:List.of("/api/v1/dashboard/lots","/api/v1/displays/lots","/api/v1/reports/lot-progress")){
+            var page=call("GET",path+"?"+filters+"&size=1",null,admin);
+            assertThat(page.status()).as(page.body().toString()).isEqualTo(200);
+            assertThat(page.body().get("totalElements").asInt()).isEqualTo(2);
+            assertThat(page.body().get("items").size()).isEqualTo(1);
+            assertThat(call("GET",path+"?"+filters+"&stationId="+s2,null,admin).body().get("totalElements").asInt()).isZero();
+            var any=call("GET",path+"?"+filters+"&stationId="+s2+"&processId="+p2+"&routeScope=ANY",null,admin);
+            assertThat(any.status()).as(any.body().toString()).isEqualTo(200);
+            assertThat(any.body().get("totalElements").asInt()).isEqualTo(2);
+            assertThat(call("GET",path+"?"+filters+"&stationId="+s1+"&processId="+p2+"&routeScope=ANY",null,admin).body().get("totalElements").asInt()).isZero();
+            assertThat(call("GET",path+"?"+filters+"&stationId="+s1+"&processId="+p1+"&lotId="+ids.get(0),null,admin).body().get("totalElements").asInt()).isEqualTo(1);
+            assertThat(call("GET",path+"?"+filters+"&status=COMPLETED",null,admin).body().get("totalElements").asInt()).isZero();
+            assertThat(call("GET",path+"?"+filters+"&routeScope=INVALID",null,admin).status()).isEqualTo(400);
+        }
+        for(String module:List.of("dashboard","reports")){
+            String base="/api/v1/"+module+"/filter-options/";
+            assertThat(call("GET",base+"lots?"+filters+"&size=1",null,admin).body().get("totalElements").asInt()).isEqualTo(2);
+            assertThat(call("GET",base+"styles?"+filters,null,admin).body().get("items").get(0).get("id").asText()).isEqualTo(style.toString());
+            assertThat(call("GET",base+"stations?"+filters,null,admin).body().get("totalElements").asInt()).isEqualTo(1);
+            assertThat(call("GET",base+"stations?"+filters+"&routeScope=ANY",null,admin).body().get("totalElements").asInt()).isEqualTo(2);
+            assertThat(call("GET",base+"processes?"+filters+"&routeScope=ANY",null,admin).body().get("totalElements").asInt()).isEqualTo(2);
+            assertThat(call("GET",base+"processes?"+filters+"&routeScope=ANY&search=Second",null,admin).body().get("totalElements").asInt()).isEqualTo(1);
+            assertThat(call("GET",base+"processes?"+filters+"&routeScope=ANY&stationId="+s2,null,admin).body().get("items").get(0).get("id").asText()).isEqualTo(p2.toString());
+            assertThat(call("GET",base+"processes?"+filters+"&routeScope=ANY&stationId="+s2,null,admin).body().get("totalElements").asInt()).isEqualTo(1);
+            assertThat(call("GET",base+"stations?"+filters+"&routeScope=ANY&processId="+p1,null,admin).body().get("totalElements").asInt()).isEqualTo(1);
+            assertThat(call("GET",base+"invalid",null,admin).status()).isEqualTo(400);
+        }
+        String name="filter-reader-"+suffix;
+        assertThat(call("POST","/api/v1/users",java.util.Map.of("username",name,"displayName",name,"initialPassword","ChangeMe123!","role","SUPERVISOR"),admin).status()).isEqualTo(200);
+        String token=login(name,"PC");
+        for(String module:List.of("dashboard","reports"))for(String type:List.of("lots","styles","stations","processes")){
+            var page=call("GET","/api/v1/"+module+"/filter-options/"+type+"?routeScope=ANY",null,token);
+            assertThat(page.status()).as(page.body().toString()).isEqualTo(200);
+            assertThat(page.body().get("totalElements").asInt()).isZero();
+        }
+        var before=call("GET","/api/v1/dashboard",null,admin).body();
+        var after=call("GET","/api/v1/dashboard?"+filters+"&stationId="+s2,null,admin).body();
+        assertThat(after.get("metrics")).isEqualTo(before.get("metrics"));
+    }
+
     @Test void numberMigrationPreservesHistoricalNumbersAndContinuesEachStyle(){
         String schema="number_upgrade_"+UUID.randomUUID().toString().replace("-","");
         var source=new org.springframework.jdbc.datasource.DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword());
@@ -84,6 +160,7 @@ class PostgresWorkflowIntegrationTest {
         UUID style=UUID.randomUUID(),other=UUID.randomUUID(),lot=UUID.randomUUID();
         legacy.update("insert into styles(id,style_number,status) values (?,'OLD','RELEASED'),(?,'NEW','DRAFT')",style,other);
         legacy.update("insert into lots(id,style_id,lot_number,quantity,status) values (?,?,?,5,'READY')",lot,style,"LOT-1700000000000-47");
+        legacy.update("insert into styles(id,style_number,status) values (?,'O L D','DRAFT')",UUID.randomUUID());
         UUID stale=UUID.randomUUID(),inactive=UUID.randomUUID(),occupied=UUID.randomUUID();
         legacy.update("insert into trolleys(id,code,status,active) values (?,'STALE','IN_USE',true),(?,'INACTIVE','IN_USE',false),(?,'OCCUPIED','IN_USE',true)",stale,inactive,occupied);
         legacy.update("insert into lot_trolley_assignments(id,lot_id,trolley_id) values (?,?,?)",UUID.randomUUID(),lot,occupied);
@@ -92,6 +169,7 @@ class PostgresWorkflowIntegrationTest {
         assertThat(legacy.queryForObject("select status from trolleys where id=?",String.class,inactive)).isEqualTo("INACTIVE");
         assertThat(legacy.queryForObject("select status from trolleys where id=?",String.class,occupied)).isEqualTo("IN_USE");
         assertThat(legacy.queryForObject("select lot_number from lots where id=?",String.class,lot)).isEqualTo("LOT-1700000000000-47");
+        assertThat(legacy.queryForObject("select style_id from style_lot_number_prefixes where prefix='OLD'",UUID.class)).isEqualTo(style);
         assertThat(legacy.queryForObject("select last_lot_sequence from styles where id=?",Long.class,style)).isEqualTo(47L);
         assertThat(legacy.queryForObject("update styles set last_lot_sequence=last_lot_sequence+1 where id=? returning last_lot_sequence",Long.class,style)).isEqualTo(48L);
         assertThat(legacy.queryForObject("select last_lot_sequence from styles where id=?",Long.class,other)).isZero();
@@ -351,7 +429,7 @@ class PostgresWorkflowIntegrationTest {
         var numbers=new java.util.HashSet<String>();
         for(var lot:initial.body().get("items")){
             assertThat(lot.get("quantity").asInt()).isEqualTo(10);
-            assertThat(lot.get("lot_number").asText()).matches("LOT-[0-9]{13}-[0-9]+");numbers.add(lot.get("lot_number").asText());
+            assertThat(lot.get("lot_number").asText()).matches("LOT-[A-Za-z0-9]+-[0-9]{3,}");numbers.add(lot.get("lot_number").asText());
             UUID.fromString(lot.get("id").asText());
         }
         assertThat(numbers).hasSize(3);
@@ -516,8 +594,17 @@ class PostgresWorkflowIntegrationTest {
         // Role changes affect existing JWTs immediately; Dashboard and Reports stay independent.
         assertThat(call("PUT","/api/v1/access-roles/"+code,java.util.Map.of("modules",List.of("dashboard")),admin).status()).isEqualTo(200);
         assertThat(call("GET","/api/v1/dashboard",null,token).status()).isEqualTo(200);
+        for(String type:List.of("lots","styles","stations","processes")){
+            assertThat(call("GET","/api/v1/dashboard/filter-options/"+type,null,token).status()).isEqualTo(200);
+            assertThat(call("GET","/api/v1/reports/filter-options/"+type,null,token).status()).isEqualTo(403);
+        }
         assertThat(call("GET","/api/v1/reports/lot-progress",null,token).status()).isEqualTo(403);
         assertThat(call("GET","/api/v1/reports/style-progress",null,token).status()).isEqualTo(403);
+        assertThat(call("PUT","/api/v1/access-roles/"+code,java.util.Map.of("modules",List.of("reports")),admin).status()).isEqualTo(200);
+        for(String type:List.of("lots","styles","stations","processes")){
+            assertThat(call("GET","/api/v1/dashboard/filter-options/"+type,null,token).status()).isEqualTo(403);
+            assertThat(call("GET","/api/v1/reports/filter-options/"+type,null,token).status()).isEqualTo(200);
+        }
         assertThat(call("GET","/api/v1/processes",null,token).status()).isEqualTo(403);
         assertThat(call("GET","/api/v1/modules/"+moduleKey+"/content",null,token).status()).isEqualTo(403);
         assertThat(call("DELETE","/api/v1/access-roles/"+code,null,admin).status()).isEqualTo(409);

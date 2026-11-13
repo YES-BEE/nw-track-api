@@ -58,10 +58,7 @@ public class DashboardController {
     private long count(List<Map<String,Object>> rows,String status){return rows.stream().filter(row->status.equals(row.get("status"))).mapToLong(row->((Number)row.get("count")).longValue()).sum();}
 
     @GetMapping({"/dashboard/lots","/displays/lots"})
-    public ApiPage<Map<String,Object>> lots(@RequestParam(required=false)String status){
-        String sql=LOT_VIEW+" where "+access.lotPredicate("l.id")+(status==null?" order by l.created_at desc,l.id":" and l.status=? order by l.created_at desc,l.id");
-        return status==null?Pages.query(jdbc,sql):Pages.query(jdbc,sql,status);
-    }
+    public ApiPage<Map<String,Object>> lots(@ModelAttribute LotFilters filters){return filteredLots(filters);}
     @GetMapping({"/dashboard/lots/{id}","/displays/lots/{id}"})
     public Map<String,Object> lotDetail(@PathVariable UUID id){access.lot(id);return jdbc.queryForMap(LOT_VIEW+" where l.id=?",id);}
     @GetMapping("/reports/style-progress")
@@ -73,8 +70,43 @@ public class DashboardController {
             access.stylePredicate("s")+" group by s.id order by s.created_at desc,s.id");
     }
     @GetMapping("/reports/lot-progress")
-    public ApiPage<Map<String,Object>> lotProgress(){
-        return Pages.query(jdbc,LOT_VIEW+" where "+access.lotPredicate("l.id")+" order by l.created_at desc,l.id");
+    public ApiPage<Map<String,Object>> lotProgress(@ModelAttribute LotFilters filters){return filteredLots(filters);}
+
+    private String filteredSource(LotFilters filters,List<Object> args){
+        return " from ("+LOT_VIEW+" where "+access.lotPredicate("l.id")+") v"+filters.where(args);
+    }
+    private ApiPage<Map<String,Object>> filteredLots(LotFilters filters){
+        List<Object> args=new ArrayList<>();
+        return Pages.query(jdbc,"select v.*"+filteredSource(filters,args)+" order by v.created_at desc,v.id",args.toArray());
+    }
+
+    @GetMapping({"/dashboard/filter-options/{type}","/reports/filter-options/{type}"})
+    public ApiPage<Map<String,Object>> filterOptions(@PathVariable String type,@ModelAttribute LotFilters filters){
+        List<Object> args=new ArrayList<>();
+        String source=filteredSource(filters,args);
+        String sql=switch(type){
+            case "lots" -> "select v.id,v.lot_number,v.style_id,v.style_number"+source+" order by v.lot_number,v.id";
+            case "styles" -> "select distinct v.style_id id,v.style_number"+source+" order by style_number,id";
+            case "stations" -> {
+                if(filters.routeScope()==LotFilters.RouteScope.CURRENT)
+                    yield "select distinct v.current_station_id id,v.current_station code"+source+" and v.current_station_id is not null order by code,id";
+                String matchingProcess="";
+                if(filters.processId()!=null){
+                    matchingProcess=" where exists(select 1 from process_executions option_pe where option_pe.station_visit_id=sv.id and option_pe.process_id=? and not (option_pe.status='SKIPPED' and coalesce(option_pe.reason,'') like 'Superseded by Manager route revision:%'))";
+                    args.add(filters.processId());
+                }
+                yield "select distinct st.id,st.code,st.name from stations st join station_visits sv on sv.station_id=st.id join (select v.id"+source+") eligible on eligible.id=sv.lot_id"+matchingProcess+" order by st.code,st.id";
+            }
+            case "processes" -> {
+                if(filters.routeScope()==LotFilters.RouteScope.CURRENT)
+                    yield "select distinct v.current_process_id id,v.current_process name"+source+" and v.current_process_id is not null order by name,id";
+                String matchingStation="";
+                if(filters.stationId()!=null){matchingStation=" and sv.station_id=?";args.add(filters.stationId());}
+                yield "select distinct p.id,p.code,p.name from processes p join process_executions pe on pe.process_id=p.id join station_visits sv on sv.id=pe.station_visit_id join (select v.id"+source+") eligible on eligible.id=sv.lot_id where not (pe.status='SKIPPED' and coalesce(pe.reason,'') like 'Superseded by Manager route revision:%')"+matchingStation+" order by p.name,p.id";
+            }
+            default -> throw new IllegalArgumentException("type must be lots, styles, stations or processes");
+        };
+        return Pages.query(jdbc,sql,args.toArray());
     }
     @GetMapping("/stations/{id}/work-in-progress") public ApiPage<Map<String,Object>> station(@PathVariable UUID id){return Pages.query(jdbc,LOT_VIEW+" join station_visits sv2 on sv2.lot_id=l.id where sv2.station_id=? and sv2.status in ('DISPATCHED','RECEIVED','ACTIVE','READY_FOR_DISPATCH') and "+access.lotPredicate("l.id")+" and l.status not in ('COMPLETED','CANCELLED') order by l.created_at,l.id",id);}
     @GetMapping("/displays/factory-summary")
@@ -112,6 +144,7 @@ public class DashboardController {
          s.id style_id,s.style_number,
          case when l.status='COMPLETED' then 100.00 else coalesce(round(100.0*pr.completed_processes/nullif(pr.total_processes,0),2),0) end progress_percent,
          pr.completed_processes,pr.total_processes,
+         (select sv.station_id from station_visits sv join lot_route_entries lr on lr.id=sv.lot_route_entry_id where sv.lot_id=l.id and lr.sequence_no=l.current_route_sequence) current_station_id,
          (select st.code from station_visits sv join stations st on st.id=sv.station_id join lot_route_entries lr on lr.id=sv.lot_route_entry_id where sv.lot_id=l.id and lr.sequence_no=l.current_route_sequence) current_station,
          cp.process_id current_process_id,cp.name current_process,cp.status current_process_status,
          case l.current_location_type

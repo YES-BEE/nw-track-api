@@ -141,7 +141,7 @@ Use the returned JWT as `Authorization: Bearer <token>`.
 - Back up the named PostgreSQL volume/database externally to meet the selected five-minute RPO; a single physical server alone cannot provide that RPO after server loss.
 ## Frontend integration handoff
 
-Import the collection and LAN environment from [docs/postman](docs/postman/README.md). It includes 149 requests in 21 use-case folders. The [v21 role/module contract](docs/ROLE_MODULES_V21.md) documents custom roles, independent screen grants, Style Configurator ownership and migration. Process-only assignments, NFC modes and final QC remain documented in the [configuration design](docs/CONFIGURATION_V8_DESIGN.md).
+Import the collection and LAN environment from [docs/postman](docs/postman/README.md). It includes 157 requests in 22 use-case folders. The [v21 role/module contract](docs/ROLE_MODULES_V21.md) documents custom roles, independent screen grants, Style Configurator ownership and migration. Process-only assignments, NFC modes and final QC remain documented in the [configuration design](docs/CONFIGURATION_V8_DESIGN.md).
 
 ## API documentation
 

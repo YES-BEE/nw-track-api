@@ -70,7 +70,7 @@ lot access. The style selector follows the same ownership rule.
 Style creation accepts `lotCount` and optional `quantity`; planned lots are generated
 only when the style is released. Additional creation accepts `{"lotCount":3,"quantity":100}`
 and returns `createdCount` plus `items`. Numbers are generated as
-`LOT-<epoch milliseconds>-<per-style sequence>` with a minimum three-digit suffix. See [Lot Management](LOT_MANAGEMENT.md) for migration and uniqueness guarantees. Do not send `lotNumber`.
+`LOT-<sanitized styleNumber>-<per-style sequence>` with a minimum three-digit suffix. See [Lot Management](LOT_MANAGEMENT.md) for migration and uniqueness guarantees. Do not send `lotNumber`.
 
 Lot Management also grants PUT/DELETE `/api/v1/lots/{id}/trolley` for assignment and
 unassignment, plus GET `/api/v1/trolleys/available` for selection. See

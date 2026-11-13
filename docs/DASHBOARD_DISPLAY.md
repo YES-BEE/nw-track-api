@@ -121,6 +121,67 @@ from both counts. `progress_percent` is that count divided by `total_processes`,
 Style progress is the arithmetic mean of its visible lots' percentages, including
 cancelled lots; styles without lots return 0. Garment quantities do not weight progress.
 
+## Production table filters and dropdown APIs
+
+The following table requests accept the same optional filters, combined with AND:
+
+- GET `/api/v1/dashboard/lots` (Dashboard access)
+- GET `/api/v1/displays/lots` (Dashboard access)
+- GET `/api/v1/reports/lot-progress` (Reports access)
+
+| Parameter | Meaning |
+| --- | --- |
+| `lotId` | UUID selected from the lot-number dropdown |
+| `styleId` | Style UUID selected from the style dropdown |
+| `stationId` | Station UUID |
+| `processId` | Process UUID (primarily for Reports) |
+| `routeScope` | `CURRENT` (default) or `ANY` |
+| `status` | Exact backend lot status, e.g. `READY` |
+| `search` | Existing case-insensitive text search across displayed fields |
+| `page`, `size` | Zero-based page; size 1–100, default 20 |
+
+`CURRENT` matches `current_station_id` and `current_process_id`; completed lots may
+have no current process. `ANY` matches any recorded station visit/process on the
+lot's route, including previous and future steps. Superseded process executions are
+excluded. If both station and process are selected in ANY mode, the process must
+belong to a visit at that station. UUID filters match exactly; use option search to
+find a lot by its number, a style by its number, or a station/process by its label.
+Omit a filter to select all values; ANY changes route matching, not authorization.
+
+For example:
+
+```http
+GET /api/v1/dashboard/lots?styleId=<UUID>&stationId=<UUID>&routeScope=ANY&page=0&size=10
+GET /api/v1/reports/lot-progress?lotId=<UUID>&processId=<UUID>&routeScope=CURRENT
+```
+
+Populate searchable dropdowns using these dedicated read endpoints. They require
+only the corresponding module, without granting master-data or Lot Management access:
+
+| Dropdown | Dashboard request | Reports request |
+| --- | --- | --- |
+| Lot number | `/api/v1/dashboard/filter-options/lots` | `/api/v1/reports/filter-options/lots` |
+| Style | `/api/v1/dashboard/filter-options/styles` | `/api/v1/reports/filter-options/styles` |
+| Station | `/api/v1/dashboard/filter-options/stations` | `/api/v1/reports/filter-options/stations` |
+| Process | `/api/v1/dashboard/filter-options/processes` | `/api/v1/reports/filter-options/processes` |
+
+Each GET returns `items`, `page`, `size`, and `totalElements`, and accepts the same
+filters, `routeScope`, `search`, `page`, and `size`. Option search applies to option
+fields, not hidden master-data fields. Options are derived only from visible lots;
+unrelated styles/stations/processes are not exposed. Lot options have `id`,
+`lot_number`, `style_id`, `style_number`; style options have `id`, `style_number`;
+station options have `id`, `code`; process options have `id`, `name`. ANY options
+also include station names and process codes. Use `id` as the selected value.
+
+Pass selected filters when loading dependent options. For example, selecting a style
+narrows lot options; in ANY mode selecting a station narrows process options to that
+station. Clear a dropdown's own selected parameter to load its other choices.
+Dashboard and Reports grants stay independent, and ownership/station restrictions
+apply to both options and table results.
+
+Only production-table results use these selected filters. Summary cards, station
+workload panels and the production trend retain the full account-visible totals.
+
 ## Today's production trend
 
 Both `/dashboard` and `/displays/factory-summary` include `productionTrend`:

@@ -1,7 +1,7 @@
 {
     "info":  {
                  "name":  "NW Track - Manual API requests",
-                 "description":  "149 normal requests in 21 folders. Collections return {items,page,size,totalElements}; use search/page/size. New users must change the initial password within seven days. See ../API_COLLECTIONS_AND_ACCOUNT_EXPIRY.md. No scripts. v21 supports independent module grants, custom roles, custom module placeholders and STYLE_CONFIGURATOR create/view-own. Use modules from login or auth/me for the sidebar. Copy returned roleCode, moduleKey, tokens and UUIDs manually. See ../ROLE_MODULES_V21.md and ../UI_V21_API_INTEGRATION.md.",
+                 "description":  "157 normal requests in 22 folders. Collections return {items,page,size,totalElements}; use search/page/size. New users must change the initial password within seven days. See ../API_COLLECTIONS_AND_ACCOUNT_EXPIRY.md. No scripts. v21 supports independent module grants, custom roles, custom module placeholders and STYLE_CONFIGURATOR create/view-own. Use modules from login or auth/me for the sidebar. Copy returned roleCode, moduleKey, tokens and UUIDs manually. See ../ROLE_MODULES_V21.md and ../UI_V21_API_INTEGRATION.md.",
                  "schema":  "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
              },
     "auth":  {
@@ -4700,5 +4700,531 @@
                                   }
                               ]
                  }
+             ,
+{
+    "name":  "22 Dashboard and report filter options",
+    "item":  [
+                 {
+                     "name":  "GET /api/v1/dashboard/filter-options/lots",
+                     "request":  {
+                                     "method":  "GET",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Accept",
+                                                        "value":  "application/json"
+                                                    }
+                                                ],
+                                     "url":  {
+                                                 "raw":  "{{baseUrl}}/api/v1/dashboard/filter-options/lots?page=0\u0026size=20\u0026routeScope=CURRENT",
+                                                 "host":  [
+                                                              "{{baseUrl}}"
+                                                          ],
+                                                 "path":  [
+                                                              "api",
+                                                              "v1",
+                                                              "dashboard",
+                                                              "filter-options",
+                                                              "lots"
+                                                          ],
+                                                 "query":  [
+                                                               {
+                                                                   "key":  "page",
+                                                                   "value":  "0"
+                                                               },
+                                                               {
+                                                                   "key":  "size",
+                                                                   "value":  "20"
+                                                               },
+                                                               {
+                                                                   "key":  "routeScope",
+                                                                   "value":  "CURRENT"
+                                                               },
+                                                               {
+                                                                   "key":  "search",
+                                                                   "value":  "",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "styleId",
+                                                                   "value":  "{{styleId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "lotId",
+                                                                   "value":  "{{lotId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "stationId",
+                                                                   "value":  "{{stationId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "processId",
+                                                                   "value":  "{{processId}}",
+                                                                   "disabled":  true
+                                                               }
+                                                           ]
+                                             },
+                                     "description":  "Searchable, paginated lots options from visible lots. Requires dashboard access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                                 }
+                 },
+                 {
+                     "name":  "GET /api/v1/dashboard/filter-options/styles",
+                     "request":  {
+                                     "method":  "GET",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Accept",
+                                                        "value":  "application/json"
+                                                    }
+                                                ],
+                                     "url":  {
+                                                 "raw":  "{{baseUrl}}/api/v1/dashboard/filter-options/styles?page=0\u0026size=20\u0026routeScope=CURRENT",
+                                                 "host":  [
+                                                              "{{baseUrl}}"
+                                                          ],
+                                                 "path":  [
+                                                              "api",
+                                                              "v1",
+                                                              "dashboard",
+                                                              "filter-options",
+                                                              "styles"
+                                                          ],
+                                                 "query":  [
+                                                               {
+                                                                   "key":  "page",
+                                                                   "value":  "0"
+                                                               },
+                                                               {
+                                                                   "key":  "size",
+                                                                   "value":  "20"
+                                                               },
+                                                               {
+                                                                   "key":  "routeScope",
+                                                                   "value":  "CURRENT"
+                                                               },
+                                                               {
+                                                                   "key":  "search",
+                                                                   "value":  "",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "styleId",
+                                                                   "value":  "{{styleId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "lotId",
+                                                                   "value":  "{{lotId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "stationId",
+                                                                   "value":  "{{stationId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "processId",
+                                                                   "value":  "{{processId}}",
+                                                                   "disabled":  true
+                                                               }
+                                                           ]
+                                             },
+                                     "description":  "Searchable, paginated styles options from visible lots. Requires dashboard access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                                 }
+                 },
+                 {
+                     "name":  "GET /api/v1/dashboard/filter-options/stations",
+                     "request":  {
+                                     "method":  "GET",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Accept",
+                                                        "value":  "application/json"
+                                                    }
+                                                ],
+                                     "url":  {
+                                                 "raw":  "{{baseUrl}}/api/v1/dashboard/filter-options/stations?page=0\u0026size=20\u0026routeScope=CURRENT",
+                                                 "host":  [
+                                                              "{{baseUrl}}"
+                                                          ],
+                                                 "path":  [
+                                                              "api",
+                                                              "v1",
+                                                              "dashboard",
+                                                              "filter-options",
+                                                              "stations"
+                                                          ],
+                                                 "query":  [
+                                                               {
+                                                                   "key":  "page",
+                                                                   "value":  "0"
+                                                               },
+                                                               {
+                                                                   "key":  "size",
+                                                                   "value":  "20"
+                                                               },
+                                                               {
+                                                                   "key":  "routeScope",
+                                                                   "value":  "CURRENT"
+                                                               },
+                                                               {
+                                                                   "key":  "search",
+                                                                   "value":  "",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "styleId",
+                                                                   "value":  "{{styleId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "lotId",
+                                                                   "value":  "{{lotId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "stationId",
+                                                                   "value":  "{{stationId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "processId",
+                                                                   "value":  "{{processId}}",
+                                                                   "disabled":  true
+                                                               }
+                                                           ]
+                                             },
+                                     "description":  "Searchable, paginated stations options from visible lots. Requires dashboard access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                                 }
+                 },
+                 {
+                     "name":  "GET /api/v1/dashboard/filter-options/processes",
+                     "request":  {
+                                     "method":  "GET",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Accept",
+                                                        "value":  "application/json"
+                                                    }
+                                                ],
+                                     "url":  {
+                                                 "raw":  "{{baseUrl}}/api/v1/dashboard/filter-options/processes?page=0\u0026size=20\u0026routeScope=CURRENT",
+                                                 "host":  [
+                                                              "{{baseUrl}}"
+                                                          ],
+                                                 "path":  [
+                                                              "api",
+                                                              "v1",
+                                                              "dashboard",
+                                                              "filter-options",
+                                                              "processes"
+                                                          ],
+                                                 "query":  [
+                                                               {
+                                                                   "key":  "page",
+                                                                   "value":  "0"
+                                                               },
+                                                               {
+                                                                   "key":  "size",
+                                                                   "value":  "20"
+                                                               },
+                                                               {
+                                                                   "key":  "routeScope",
+                                                                   "value":  "CURRENT"
+                                                               },
+                                                               {
+                                                                   "key":  "search",
+                                                                   "value":  "",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "styleId",
+                                                                   "value":  "{{styleId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "lotId",
+                                                                   "value":  "{{lotId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "stationId",
+                                                                   "value":  "{{stationId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "processId",
+                                                                   "value":  "{{processId}}",
+                                                                   "disabled":  true
+                                                               }
+                                                           ]
+                                             },
+                                     "description":  "Searchable, paginated processes options from visible lots. Requires dashboard access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                                 }
+                 },
+                 {
+                     "name":  "GET /api/v1/reports/filter-options/lots",
+                     "request":  {
+                                     "method":  "GET",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Accept",
+                                                        "value":  "application/json"
+                                                    }
+                                                ],
+                                     "url":  {
+                                                 "raw":  "{{baseUrl}}/api/v1/reports/filter-options/lots?page=0\u0026size=20\u0026routeScope=CURRENT",
+                                                 "host":  [
+                                                              "{{baseUrl}}"
+                                                          ],
+                                                 "path":  [
+                                                              "api",
+                                                              "v1",
+                                                              "reports",
+                                                              "filter-options",
+                                                              "lots"
+                                                          ],
+                                                 "query":  [
+                                                               {
+                                                                   "key":  "page",
+                                                                   "value":  "0"
+                                                               },
+                                                               {
+                                                                   "key":  "size",
+                                                                   "value":  "20"
+                                                               },
+                                                               {
+                                                                   "key":  "routeScope",
+                                                                   "value":  "CURRENT"
+                                                               },
+                                                               {
+                                                                   "key":  "search",
+                                                                   "value":  "",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "styleId",
+                                                                   "value":  "{{styleId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "lotId",
+                                                                   "value":  "{{lotId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "stationId",
+                                                                   "value":  "{{stationId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "processId",
+                                                                   "value":  "{{processId}}",
+                                                                   "disabled":  true
+                                                               }
+                                                           ]
+                                             },
+                                     "description":  "Searchable, paginated lots options from visible lots. Requires reports access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                                 }
+                 },
+                 {
+                     "name":  "GET /api/v1/reports/filter-options/styles",
+                     "request":  {
+                                     "method":  "GET",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Accept",
+                                                        "value":  "application/json"
+                                                    }
+                                                ],
+                                     "url":  {
+                                                 "raw":  "{{baseUrl}}/api/v1/reports/filter-options/styles?page=0\u0026size=20\u0026routeScope=CURRENT",
+                                                 "host":  [
+                                                              "{{baseUrl}}"
+                                                          ],
+                                                 "path":  [
+                                                              "api",
+                                                              "v1",
+                                                              "reports",
+                                                              "filter-options",
+                                                              "styles"
+                                                          ],
+                                                 "query":  [
+                                                               {
+                                                                   "key":  "page",
+                                                                   "value":  "0"
+                                                               },
+                                                               {
+                                                                   "key":  "size",
+                                                                   "value":  "20"
+                                                               },
+                                                               {
+                                                                   "key":  "routeScope",
+                                                                   "value":  "CURRENT"
+                                                               },
+                                                               {
+                                                                   "key":  "search",
+                                                                   "value":  "",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "styleId",
+                                                                   "value":  "{{styleId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "lotId",
+                                                                   "value":  "{{lotId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "stationId",
+                                                                   "value":  "{{stationId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "processId",
+                                                                   "value":  "{{processId}}",
+                                                                   "disabled":  true
+                                                               }
+                                                           ]
+                                             },
+                                     "description":  "Searchable, paginated styles options from visible lots. Requires reports access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                                 }
+                 },
+                 {
+                     "name":  "GET /api/v1/reports/filter-options/stations",
+                     "request":  {
+                                     "method":  "GET",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Accept",
+                                                        "value":  "application/json"
+                                                    }
+                                                ],
+                                     "url":  {
+                                                 "raw":  "{{baseUrl}}/api/v1/reports/filter-options/stations?page=0\u0026size=20\u0026routeScope=CURRENT",
+                                                 "host":  [
+                                                              "{{baseUrl}}"
+                                                          ],
+                                                 "path":  [
+                                                              "api",
+                                                              "v1",
+                                                              "reports",
+                                                              "filter-options",
+                                                              "stations"
+                                                          ],
+                                                 "query":  [
+                                                               {
+                                                                   "key":  "page",
+                                                                   "value":  "0"
+                                                               },
+                                                               {
+                                                                   "key":  "size",
+                                                                   "value":  "20"
+                                                               },
+                                                               {
+                                                                   "key":  "routeScope",
+                                                                   "value":  "CURRENT"
+                                                               },
+                                                               {
+                                                                   "key":  "search",
+                                                                   "value":  "",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "styleId",
+                                                                   "value":  "{{styleId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "lotId",
+                                                                   "value":  "{{lotId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "stationId",
+                                                                   "value":  "{{stationId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "processId",
+                                                                   "value":  "{{processId}}",
+                                                                   "disabled":  true
+                                                               }
+                                                           ]
+                                             },
+                                     "description":  "Searchable, paginated stations options from visible lots. Requires reports access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                                 }
+                 },
+                 {
+                     "name":  "GET /api/v1/reports/filter-options/processes",
+                     "request":  {
+                                     "method":  "GET",
+                                     "header":  [
+                                                    {
+                                                        "key":  "Accept",
+                                                        "value":  "application/json"
+                                                    }
+                                                ],
+                                     "url":  {
+                                                 "raw":  "{{baseUrl}}/api/v1/reports/filter-options/processes?page=0\u0026size=20\u0026routeScope=CURRENT",
+                                                 "host":  [
+                                                              "{{baseUrl}}"
+                                                          ],
+                                                 "path":  [
+                                                              "api",
+                                                              "v1",
+                                                              "reports",
+                                                              "filter-options",
+                                                              "processes"
+                                                          ],
+                                                 "query":  [
+                                                               {
+                                                                   "key":  "page",
+                                                                   "value":  "0"
+                                                               },
+                                                               {
+                                                                   "key":  "size",
+                                                                   "value":  "20"
+                                                               },
+                                                               {
+                                                                   "key":  "routeScope",
+                                                                   "value":  "CURRENT"
+                                                               },
+                                                               {
+                                                                   "key":  "search",
+                                                                   "value":  "",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "styleId",
+                                                                   "value":  "{{styleId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "lotId",
+                                                                   "value":  "{{lotId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "stationId",
+                                                                   "value":  "{{stationId}}",
+                                                                   "disabled":  true
+                                                               },
+                                                               {
+                                                                   "key":  "processId",
+                                                                   "value":  "{{processId}}",
+                                                                   "disabled":  true
+                                                               }
+                                                           ]
+                                             },
+                                     "description":  "Searchable, paginated processes options from visible lots. Requires reports access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                                 }
+                 }
              ]
+}
+]
 }

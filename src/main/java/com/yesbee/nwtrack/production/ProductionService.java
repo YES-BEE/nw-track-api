@@ -13,7 +13,7 @@ public class ProductionService {
     private final JdbcTemplate jdbc; private final RouteDerivationService routes;
     public ProductionService(JdbcTemplate jdbc,RouteDerivationService routes){this.jdbc=jdbc;this.routes=routes;}
 
-    @Transactional public UUID createStyle(String number,String description,UUID actor){UUID id=UUID.randomUUID();jdbc.update("insert into styles(id,style_number,description,status,created_by) values (?,?,?,'DRAFT',?)",id,number.trim(),description,actor);return id;}
+    @Transactional public UUID createStyle(String number,String description,UUID actor){UUID id=UUID.randomUUID();jdbc.update("insert into styles(id,style_number,description,status,created_by) values (?,?,?,'DRAFT',?)",id,number.trim(),description,actor);reserveLotPrefix(id,number);return id;}
     @Transactional public UUID createConfiguredStyle(String number,String description,UUID actor,List<UUID> processes){
         UUID id=createStyle(number,description,actor);
         if(processes!=null&&!processes.isEmpty()){setProcesses(id,processes);derive(id);}
@@ -72,12 +72,20 @@ public class ProductionService {
         jdbc.update("insert into audit_log(actor_id,action,object_type,object_id,outcome,reason) values (?,'CANCEL','LOT',?,'SUCCESS',?)",actor,lotId,reason);
     }
 
-    // Called inside the creation/release transaction; style then clock is the
-    // common lock order. Both reservations roll back if lot creation fails.
+    // The locked style serializes sequence allocation; reservations roll back on failure.
     private LotNumber nextLotNumber(UUID styleId){
+        String styleNumber=jdbc.queryForObject("select style_number from styles where id=?",String.class,styleId);
+        String prefix=reserveLotPrefix(styleId,styleNumber);
         long sequence=jdbc.queryForObject("update styles set last_lot_sequence=last_lot_sequence+1 where id=? returning last_lot_sequence",Long.class,styleId);
-        long epoch=jdbc.queryForObject("update lot_number_clock set last_epoch_ms=greatest(last_epoch_ms+1,floor(extract(epoch from clock_timestamp())*1000)::bigint) where singleton returning last_epoch_ms",Long.class);
-        return new LotNumber(String.format(Locale.ROOT,"LOT-%d-%03d",epoch,sequence),sequence);
+        return new LotNumber(String.format(Locale.ROOT,"LOT-%s-%03d",prefix,sequence),sequence);
+    }
+    private String reserveLotPrefix(UUID styleId,String styleNumber){
+        String prefix=styleNumber.replaceAll("[^A-Za-z0-9]","");
+        if(prefix.isEmpty())throw new BusinessRuleException("INVALID_LOT_PREFIX","Style number must contain at least one letter or digit");
+        jdbc.update("insert into style_lot_number_prefixes(prefix,style_id) values (?,?) on conflict(prefix) do nothing",prefix,styleId);
+        UUID owner=jdbc.queryForObject("select style_id from style_lot_number_prefixes where prefix=?",UUID.class,prefix);
+        if(!styleId.equals(owner))throw new BusinessRuleException("LOT_PREFIX_IN_USE","Another style uses the same lot prefix after removing spaces and special characters");
+        return prefix;
     }
     private record LotNumber(String value,long sequence){}
     private List<RouteDerivationService.SelectedProcess> selected(UUID styleId){return jdbc.query("select p.id,p.code,sp.sequence_no,p.station_id,s.code from style_processes sp join processes p on p.id=sp.process_id join stations s on s.id=p.station_id where sp.style_id=? and p.active and s.active order by sp.sequence_no",(rs,n)->new RouteDerivationService.SelectedProcess((UUID)rs.getObject(1),rs.getString(2),rs.getInt(3),(UUID)rs.getObject(4),rs.getString(5)),styleId);}

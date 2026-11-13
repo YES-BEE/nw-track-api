@@ -32,8 +32,10 @@ Production Manager retain release access. Style Configurator can also release st
 they created, using the same POST release endpoint. Another creator's style is denied
 with 403. Custom roles with New Style alone do not receive this release permission.
 
-Generated numbers have the form `LOT-<epoch milliseconds>-<style sequence>`, for
-example `LOT-1794441600000-001`, then `LOT-1794441600001-002`. Each new style starts
+New numbers have the form `LOT-<sanitized styleNumber>-<style sequence>`, for
+example `LOT-SHIRT101-001`, then `LOT-SHIRT101-002`. Spaces and special characters
+are removed from the user-entered style number, preserving ASCII letters, digits,
+and their case: `SHIRT / 101` becomes `SHIRT101`. Each new style starts
 at 001 and advances by one for each committed lot, across release-time and later
 batches. The suffix is padded to at least three digits and is never truncated or
 wrapped (1000 remains 1000 if ever reached).
@@ -43,13 +45,19 @@ the larger of their existing lot count and largest historical generated suffix;
 new styles start at 001. Historical global suffixes are not rewritten. Cancelled
 lots still consume their sequence position.
 
-A row-locked per-style counter and unique `(style_id,lot_sequence)` index protect
-new allocations. A factory-wide logical epoch millisecond is reserved for each lot,
-using the larger of the current epoch time and the last reserved millisecond plus
-one. This prevents different styles both producing the same timestamp-001 number,
-including during concurrent requests or clock adjustments. The existing unique
-`lot_number` constraint provides the final database safeguard against duplicates
-within the factory database. Counter updates roll back with a failed creation.
+Migration V11 changes only future generation; existing lot numbers and per-style
+counters remain unchanged. If an existing style's last sequence is 149, its next
+number is `LOT-<sanitized styleNumber>-150`. Epoch timestamps are no longer allocated.
+
+A row-locked per-style counter, unique `(style_id,lot_sequence)` index, and uniquely
+reserved style prefix protect concurrent allocations. The existing unique `lot_number`
+constraint remains the final database safeguard. Counter and prefix reservations
+roll back with a failed creation. Styles with no ASCII letter/digit return 409
+`INVALID_LOT_PREFIX`; a prefix reserved by another style returns 409 `LOT_PREFIX_IN_USE`.
+For example, `AB-12` and `AB 12` cannot both reserve `AB12`. New conflicting styles
+are rejected atomically. For existing conflicting styles, migration reserves the
+prefix for the earliest style (created_at, then UUID); other styles and their existing
+lots remain intact, but new lot generation for the conflicting style returns 409.
 
 The separate internal `id` remains a UUID. Do not send `lotNumber` or `id` when creating lots.
 ## Add more lots after release
@@ -70,7 +78,7 @@ Adding lots to a completed style reopens it for production.
 The response is always a batch object, including when creating one lot:
 
 ```json
-{"createdCount":3,"items":[{"id":"<UUID>","lot_number":"LOT-1794441600000-001","quantity":80}]}
+{"createdCount":3,"items":[{"id":"<UUID>","lot_number":"LOT-SHIRT101-001","quantity":80}]}
 ```
 
 `items` contains every created lot. Read the resulting inventory using the paginated
