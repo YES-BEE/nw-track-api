@@ -102,8 +102,18 @@ EOF
 wait_for_health() {
   local address domain url
   address="$(env_value BIND_ADDRESS)";domain="$(env_value APP_DOMAIN)";url="https://$domain/actuator/health"
-  for _ in $(seq 1 60); do curl -fsS --cacert "$CERT_DIR/ca.crt" --resolve "$domain:443:$address" "$url" | grep -q '"status":"UP"' && { echo "NW Track is ready: $url";return; };sleep 5;done
-  compose logs --tail 100 api;echo "Health check timed out." >&2;exit 1
+  for _ in $(seq 1 60); do
+    local response
+    if response="$(curl -fsS --connect-timeout 5 --max-time 10 --cacert "$CERT_DIR/ca.crt" --resolve "$domain:443:$address" "$url" 2>/dev/null)" && grep -q '"status":"UP"' <<<"$response"; then
+      echo "NW Track is ready: $url"
+      return
+    fi
+    sleep 5
+  done
+  echo "Health check timed out: $url" >&2
+  compose ps >&2
+  compose logs --tail 100 nginx api >&2
+  exit 1
 }
 start_compose() {
   local build_flag="${1:-}"
