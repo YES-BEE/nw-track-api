@@ -14,14 +14,15 @@ import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.*;
+import com.yesbee.nwtrack.auth.AccessPolicy;
 
 @RestController @RequestMapping("/api/v1") @Tag(name="Dashboard and displays")
 @PreAuthorize("isAuthenticated()")
 public class DashboardController {
     private final JdbcTemplate jdbc;
-    private final com.yesbee.nwtrack.auth.AccessPolicy access;
+    private final AccessPolicy access;
     private final ZoneId factoryZone;
-    public DashboardController(JdbcTemplate jdbc,com.yesbee.nwtrack.auth.AccessPolicy access,
+    public DashboardController(JdbcTemplate jdbc,AccessPolicy access,
             @Value("${nwtrack.factory-timezone:Asia/Kolkata}") String factoryTimezone){
         this.jdbc=jdbc;this.access=access;this.factoryZone=ZoneId.of(factoryTimezone);
     }
@@ -104,7 +105,11 @@ public class DashboardController {
                 if(filters.stationId()!=null){matchingStation=" and sv.station_id=?";args.add(filters.stationId());}
                 yield "select distinct p.id,p.code,p.name from processes p join process_executions pe on pe.process_id=p.id join station_visits sv on sv.id=pe.station_visit_id join (select v.id"+source+") eligible on eligible.id=sv.lot_id where not (pe.status='SKIPPED' and coalesce(pe.reason,'') like 'Superseded by Manager route revision:%')"+matchingStation+" order by p.name,p.id";
             }
-            default -> throw new IllegalArgumentException("type must be lots, styles, stations or processes");
+            case "operators" -> "select distinct u.id,u.display_name name from users u"+
+                " join process_executions pe on pe.operator_id=u.id join station_visits sv on sv.id=pe.station_visit_id"+
+                " join (select v.id"+source+") eligible on eligible.id=sv.lot_id order by name,u.id";
+            case "statuses" -> "select distinct v.status id,v.status name"+source+" order by name";
+            default -> throw new IllegalArgumentException("type must be lots, styles, stations, processes, operators or statuses");
         };
         return Pages.query(jdbc,sql,args.toArray());
     }

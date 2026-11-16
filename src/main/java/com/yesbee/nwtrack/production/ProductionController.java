@@ -14,11 +14,12 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 import com.yesbee.nwtrack.shared.ApiPage;
 import com.yesbee.nwtrack.shared.Pages;
+import com.yesbee.nwtrack.auth.AccessPolicy;
 
 @RestController @RequestMapping("/api/v1") @Tag(name="Styles and Lots")
 public class ProductionController {
-    private final LotTrolleyService trolleyMappings;private final ProductionService service;private final JdbcTemplate jdbc;private final ActorResolver actors;private final StyleRevisionService revisions;private final com.yesbee.nwtrack.auth.AccessPolicy access;
-    public ProductionController(LotTrolleyService trolleyMappings,ProductionService service,JdbcTemplate jdbc,ActorResolver actors,StyleRevisionService revisions,com.yesbee.nwtrack.auth.AccessPolicy access){this.trolleyMappings=trolleyMappings;this.service=service;this.jdbc=jdbc;this.actors=actors;this.revisions=revisions;this.access=access;}
+    private final LotTrolleyService trolleyMappings;private final ProductionService service;private final JdbcTemplate jdbc;private final ActorResolver actors;private final StyleRevisionService revisions;private final AccessPolicy access;
+    public ProductionController(LotTrolleyService trolleyMappings,ProductionService service,JdbcTemplate jdbc,ActorResolver actors,StyleRevisionService revisions,AccessPolicy access){this.trolleyMappings=trolleyMappings;this.service=service;this.jdbc=jdbc;this.actors=actors;this.revisions=revisions;this.access=access;}
     @PostMapping("/styles") @PreAuthorize("isAuthenticated()") public Map<String,Object> createStyle(@Valid @RequestBody StyleCommand r,@AuthenticationPrincipal Jwt jwt){
         if(access.ownStylesOnly()&&(r.processIds()==null||r.processIds().isEmpty()))throw new IllegalArgumentException("New Style requires processIds in the create request");
         validateProcesses(r.processIds());return style(service.createConfiguredStyle(r.styleNumber(),r.description(),actors.id(jwt),r.processIds(),r.lotCount(),r.quantity()));

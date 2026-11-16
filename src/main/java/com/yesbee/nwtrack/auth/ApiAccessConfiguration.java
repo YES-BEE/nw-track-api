@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.servlet.*;
 import org.springframework.web.servlet.config.annotation.*;
 import java.util.*;
+import org.springframework.web.util.UrlPathHelper;
 
 @Configuration
 public class ApiAccessConfiguration implements WebMvcConfigurer {
@@ -14,7 +15,7 @@ public class ApiAccessConfiguration implements WebMvcConfigurer {
     @Override public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new HandlerInterceptor(){
             @Override public boolean preHandle(HttpServletRequest request,HttpServletResponse response,Object handler) {
-                String path=org.springframework.web.util.UrlPathHelper.defaultInstance.getLookupPathForRequest(request);
+                String path=UrlPathHelper.defaultInstance.getLookupPathForRequest(request);
                 if(path.equals("/api/v1/auth/login")||path.equals("/api/v1/auth/refresh")) return true;
                 modules.authorize(path,request.getMethod());
                 String[] parts=path.substring("/api/v1/".length()).split("/");

@@ -3915,6 +3915,71 @@
                                                   }
                                   },
                                   {
+                                      "name":  "GET /api/v1/reports/catalog",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{baseUrl}}/api/v1/reports/catalog",
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "api",
+                                                                               "v1",
+                                                                               "reports",
+                                                                               "catalog"
+                                                                           ]
+                                                              },
+                                                      "description":  "Lists active database-backed report categories, supported formats, filters, and required parameters."
+                                                  }
+                                  },
+                                  {
+                                      "name":  "GET /api/v1/reports/{reportId}/export",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Accept",
+                                                                         "value":  "application/octet-stream"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{baseUrl}}/api/v1/reports/{{reportId}}/export?format=xlsx\u0026from=2026-10-01\u0026to=2026-10-31",
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "api",
+                                                                               "v1",
+                                                                               "reports",
+                                                                               "{{reportId}}",
+                                                                               "export"
+                                                                           ],
+                                                                  "query":  [
+                                                                                {
+                                                                                    "key":  "format",
+                                                                                    "value":  "xlsx"
+                                                                                },
+                                                                                {
+                                                                                    "key":  "from",
+                                                                                    "value":  "2026-10-01"
+                                                                                },
+                                                                                {
+                                                                                    "key":  "to",
+                                                                                    "value":  "2026-10-31"
+                                                                                }
+                                                                            ]
+                                                              },
+                                                      "description":  "Streams one report file using the category UUID returned by GET /api/v1/reports/catalog. from and to are required inclusive factory-local dates."
+                                                  }
+                                  },
+                                  {
                                       "name":  "GET /api/v1/displays/factory-summary",
                                       "request":  {
                                                       "method":  "GET",

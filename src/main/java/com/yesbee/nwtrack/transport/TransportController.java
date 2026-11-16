@@ -11,13 +11,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import java.util.*;
 import com.yesbee.nwtrack.shared.ApiPage;
 import com.yesbee.nwtrack.shared.Pages;
+import com.yesbee.nwtrack.auth.AccessPolicy;
 
 @RestController
 @RequestMapping("/api/v1/transport-requests")
 @Tag(name = "Transport", description = "AGV/AMR provider abstraction and simulator")
 public class TransportController {
-    private final TransportProvider provider; private final TransportRequestService requests; private final JdbcTemplate jdbc;private final com.yesbee.nwtrack.auth.AccessPolicy access;
-    public TransportController(TransportProvider provider,TransportRequestService requests,JdbcTemplate jdbc,com.yesbee.nwtrack.auth.AccessPolicy access) { this.provider = provider;this.requests=requests;this.jdbc=jdbc;this.access=access; }
+    private final TransportProvider provider; private final TransportRequestService requests; private final JdbcTemplate jdbc;private final AccessPolicy access;
+    public TransportController(TransportProvider provider,TransportRequestService requests,JdbcTemplate jdbc,AccessPolicy access) { this.provider = provider;this.requests=requests;this.jdbc=jdbc;this.access=access; }
     @PostMapping @PreAuthorize("isAuthenticated()") public Map<String,Object> create(@Valid @RequestBody CreateRequest r){access.lot(r.lotId());access.station(jdbc.queryForObject("select station_id from transport_locations where id=?",UUID.class,r.sourceLocationId()));UUID id=requests.create(r.lotId(),r.trolleyId(),r.sourceLocationId(),r.destinationLocationId(),r.priority());return get(id);}
     @GetMapping @PreAuthorize("isAuthenticated()") public ApiPage<Map<String,Object>> list(){return Pages.query(jdbc,SELECT+" where "+access.lotPredicate("tr.lot_id")+" order by tr.created_at desc,tr.id");}
     @GetMapping("/{id}") @PreAuthorize("isAuthenticated()") public Map<String,Object> get(@PathVariable UUID id){return jdbc.queryForMap(SELECT+" where tr.id=?",id);}

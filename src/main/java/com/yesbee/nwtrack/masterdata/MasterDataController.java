@@ -19,12 +19,20 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.yesbee.nwtrack.auth.AccessPolicy;
+import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import org.springframework.transaction.annotation.Transactional;
 
 @RestController @Tag(name="Factory master data")
 @PreAuthorize("isAuthenticated()")
 public class MasterDataController {
-    private final JdbcTemplate jdbc;private final NfcAssetService nfc;private final ActorResolver actors;private final ConfigurationService configurations;private final com.yesbee.nwtrack.auth.AccessPolicy access;
-    public MasterDataController(JdbcTemplate jdbc,NfcAssetService nfc,ActorResolver actors,ConfigurationService configurations,com.yesbee.nwtrack.auth.AccessPolicy access){this.jdbc=jdbc;this.nfc=nfc;this.actors=actors;this.configurations=configurations;this.access=access;}
+    private final JdbcTemplate jdbc;private final NfcAssetService nfc;private final ActorResolver actors;private final ConfigurationService configurations;private final AccessPolicy access;
+    public MasterDataController(JdbcTemplate jdbc,NfcAssetService nfc,ActorResolver actors,ConfigurationService configurations,AccessPolicy access){this.jdbc=jdbc;this.nfc=nfc;this.actors=actors;this.configurations=configurations;this.access=access;}
 
     @PostMapping("/api/v1/stations") public Map<String,Object> createStation(@Valid @RequestBody StationCommand r,@AuthenticationPrincipal Jwt jwt){UUID id=UUID.randomUUID();jdbc.update("insert into stations(id,code,name,station_type,active,is_station_zero,is_qc) values (?,?,?,?,true,?,?)",id,r.code().trim(),r.name().trim(),r.stationType(),r.stationZero(),r.qc());if(r.nfcUid()!=null&&!r.nfcUid().isBlank())nfc.registerAndAssign(r.nfcUid(),"STATION",id,actors.id(jwt),"Station onboarding");return station(id);}
     @GetMapping("/api/v1/stations") @PreAuthorize("isAuthenticated()") public ApiPage<Map<String,Object>> stations(){return Pages.query(jdbc,"select id,code,name,station_type,active,is_station_zero,is_qc,version from stations where "+access.stationPredicate("id")+" order by code");}
@@ -36,7 +44,7 @@ public class MasterDataController {
     @GetMapping("/api/v1/processes") @PreAuthorize("isAuthenticated()") public ApiPage<Map<String,Object>> processes(){return Pages.query(jdbc,PROCESS_SELECT+" where "+access.processPredicate("p.id")+" order by p.code").map(this::processView);}
     @GetMapping("/api/v1/processes/{id}") @PreAuthorize("isAuthenticated()") public Map<String,Object> process(@PathVariable UUID id){return processView(one(PROCESS_SELECT+" where p.id=?",id));}
     @PutMapping("/api/v1/processes/{id}") public Map<String,Object> updateProcess(@PathVariable UUID id,@Valid @RequestBody ConfigurationService.ProcessCommand r,@AuthenticationPrincipal Jwt jwt){return process(configurations.saveProcess(id,r,actors.id(jwt)));}
-    @PatchMapping("/api/v1/processes/{id}/status") @org.springframework.transaction.annotation.Transactional public Map<String,Object> processStatus(@PathVariable UUID id,@RequestBody StatusCommand r,@AuthenticationPrincipal Jwt jwt){if(!r.active())return deleteProcess(id,jwt);jdbc.update("update processes set active=true,version=version+1 where id=?",id);return process(id);}
+    @PatchMapping("/api/v1/processes/{id}/status") @Transactional public Map<String,Object> processStatus(@PathVariable UUID id,@RequestBody StatusCommand r,@AuthenticationPrincipal Jwt jwt){if(!r.active())return deleteProcess(id,jwt);jdbc.update("update processes set active=true,version=version+1 where id=?",id);return process(id);}
 
     @PostMapping("/api/v1/trolleys") public Map<String,Object> createTrolley(@Valid @RequestBody CodeCommand r){UUID id=UUID.randomUUID();jdbc.update("insert into trolleys(id,code) values (?,?)",id,norm(r.code()));return trolley(id);}
     @GetMapping("/api/v1/trolleys") @PreAuthorize("isAuthenticated()") public ApiPage<Map<String,Object>> trolleys(){return Pages.query(jdbc,"select id,code,status,active,version from trolleys order by code");}
@@ -51,21 +59,21 @@ public class MasterDataController {
     @GetMapping("/api/v1/storage-locations/{id}/occupancies") @PreAuthorize("isAuthenticated()") public ApiPage<Map<String,Object>> occupancies(@PathVariable UUID id){return Pages.query(jdbc,"select so.id,so.lot_id,l.lot_number,so.stored_at,so.stored_by from storage_occupancies so join lots l on l.id=so.lot_id where so.storage_location_id=? and so.retrieved_at is null order by so.stored_at",id);}
     @PatchMapping("/api/v1/storage-locations/{id}/status") public Map<String,Object> storageStatus(@PathVariable UUID id,@RequestBody StatusCommand r){jdbc.update("update storage_locations set active=?,version=version+1 where id=?",r.active(),id);return storage(id);}
 
-    @PostMapping("/api/v1/nfc-tags") public Map<String,Object> createTag(@Valid @RequestBody TagCommand r){UUID id=UUID.randomUUID();jdbc.update("insert into nfc_tags(id,uid,name,active) values (?,?,?,false)",id,r.uid().trim().toUpperCase(java.util.Locale.ROOT),r.name().trim());return tag(id);}
+    @PostMapping("/api/v1/nfc-tags") public Map<String,Object> createTag(@Valid @RequestBody TagCommand r){UUID id=UUID.randomUUID();jdbc.update("insert into nfc_tags(id,uid,name,active) values (?,?,?,false)",id,r.uid().trim().toUpperCase(Locale.ROOT),r.name().trim());return tag(id);}
     @GetMapping("/api/v1/nfc-tags") public ApiPage<Map<String,Object>> tags(@RequestParam(required=false) String status,@RequestParam(required=false) Boolean assigned){
-        String sql=TAG_SELECT+" where "+access.tagPredicate("nfc_tags");java.util.List<Object> args=new java.util.ArrayList<>();
-        if(status!=null){sql+=" and status=?";args.add(status.toUpperCase(java.util.Locale.ROOT));}
+        String sql=TAG_SELECT+" where "+access.tagPredicate("nfc_tags");List<Object> args=new ArrayList<>();
+        if(status!=null){sql+=" and status=?";args.add(status.toUpperCase(Locale.ROOT));}
         if(assigned!=null){sql+=" and active=?";args.add(assigned);}
         return Pages.query(jdbc,sql+" order by uid",args.toArray());
     }
     @GetMapping("/api/v1/nfc-tags/statuses") public ApiPage<Map<String,Object>> tagStatuses(){return Pages.query(jdbc,"select code,description,assignable from nfc_tag_statuses order by code");}
     @PutMapping("/api/v1/nfc-tags/{id}") public Map<String,Object> updateTag(@PathVariable UUID id,@Valid @RequestBody TagCommand r){
         jdbc.queryForObject("select id from nfc_tags where id=?",UUID.class,id);
-        if(jdbc.queryForObject("select count(*) from nfc_assignment_history where nfc_tag_id=?",Integer.class,id)>0 && !jdbc.queryForObject("select uid from nfc_tags where id=?",String.class,id).equals(r.uid().trim().toUpperCase(java.util.Locale.ROOT)))throw new IllegalArgumentException("A tag with assignment history cannot change its physical UID");
-        jdbc.update("update nfc_tags set name=?,uid=?,version=version+1 where id=?",r.name().trim(),r.uid().trim().toUpperCase(java.util.Locale.ROOT),id);return tag(id);
+        if(jdbc.queryForObject("select count(*) from nfc_assignment_history where nfc_tag_id=?",Integer.class,id)>0 && !jdbc.queryForObject("select uid from nfc_tags where id=?",String.class,id).equals(r.uid().trim().toUpperCase(Locale.ROOT)))throw new IllegalArgumentException("A tag with assignment history cannot change its physical UID");
+        jdbc.update("update nfc_tags set name=?,uid=?,version=version+1 where id=?",r.name().trim(),r.uid().trim().toUpperCase(Locale.ROOT),id);return tag(id);
     }
     @DeleteMapping("/api/v1/nfc-tags/{id}") public Map<String,Object> deleteTag(@PathVariable UUID id){nfc.lifecycle(id,"DELETED");return tag(id);}
-    @DeleteMapping("/api/v1/processes/{id}") @org.springframework.transaction.annotation.Transactional public Map<String,Object> deleteProcess(@PathVariable UUID id,@AuthenticationPrincipal Jwt jwt){
+    @DeleteMapping("/api/v1/processes/{id}") @Transactional public Map<String,Object> deleteProcess(@PathVariable UUID id,@AuthenticationPrincipal Jwt jwt){
         if(jdbc.queryForObject("select count(*) from process_executions where process_id=? and status not in ('COMPLETED','SKIPPED')",Integer.class,id)>0)throw new IllegalArgumentException("Process has unfinished production");
         for(UUID tag:jdbc.queryForList("select id from nfc_tags where active and (process_id=? or machine_id in(select id from machines where process_id=?))",UUID.class,id,id))nfc.unassign(tag,actors.id(jwt),"Process deleted");
         jdbc.update("update machines set active=false,status='INACTIVE',version=version+1 where process_id=?",id);
@@ -79,7 +87,7 @@ public class MasterDataController {
 
     private Map<String,Object> one(String sql,Object... args){List<Map<String,Object>> rows=jdbc.queryForList(sql,args);if(rows.isEmpty())throw new BusinessRuleException("NOT_FOUND","Requested resource was not found");return rows.getFirst();}
     private Map<String,Object> processView(Map<String,Object> row){
-        Map<String,Object> result=new java.util.LinkedHashMap<>(row);
+        Map<String,Object> result=new LinkedHashMap<>(row);
         result.put("stationNumber",row.get("station_code"));result.put("nfcMode",row.get("nfc_mode"));result.put("nfcUid",row.get("nfc_uid"));result.put("deviceCount",row.get("device_count"));
         List<Map<String,Object>> devices=jdbc.queryForList("select m.id,m.process_id,m.name,m.description,m.machine_type,m.status,(select n.uid from nfc_tags n where n.machine_id=m.id and n.active) nfc_uid from machines m where m.process_id=? and m.active order by m.name,m.id",row.get("id"));
         for(Map<String,Object> device:devices){device.put("type",device.get("machine_type"));device.put("nfcUid",device.get("nfc_uid"));device.put("processId",device.get("process_id"));device.put("stationNumber",row.get("station_code"));}
@@ -91,8 +99,8 @@ public class MasterDataController {
     private static final String STORAGE_SELECT="select sl.id,sl.station_id,s.code station_code,sl.storage_area_id,sa.code storage_area_code,sl.code,sl.name,sl.active,sl.version from storage_locations sl join stations s on s.id=sl.station_id join storage_areas sa on sa.id=sl.storage_area_id";
     public record StationCommand(@NotBlank String code,@NotBlank String name,@NotBlank String stationType,boolean stationZero,boolean qc,String nfcUid){}
     public record StorageCommand(@NotNull UUID stationId,@NotNull UUID storageAreaId,@NotBlank String code,@NotBlank String name){}
-    public record TagCommand(@NotBlank @jakarta.validation.constraints.Size(max=150) @com.fasterxml.jackson.annotation.JsonAlias("tagName") String name,@NotBlank @jakarta.validation.constraints.Size(max=128) @com.fasterxml.jackson.annotation.JsonAlias({"tagId","actual"}) String uid){}
-    public record TagStatusCommand(@NotBlank @jakarta.validation.constraints.Pattern(regexp="ACTIVE|DELETED") String status){}
+    public record TagCommand(@NotBlank @Size(max=150) @JsonAlias("tagName") String name,@NotBlank @Size(max=128) @JsonAlias({"tagId","actual"}) String uid){}
+    public record TagStatusCommand(@NotBlank @Pattern(regexp="ACTIVE|DELETED") String status){}
     public record TransportLocationCommand(UUID stationId,@NotBlank String code,@NotBlank String locationType){}
     public record CodeCommand(@NotBlank String code){} public record StatusCommand(boolean active){}
 }

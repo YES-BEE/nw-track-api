@@ -20,25 +20,33 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.OffsetDateTime;
 import java.util.*;
+import com.yesbee.nwtrack.auth.AccessPolicy;
+import com.yesbee.nwtrack.shared.Pages;
+import com.yesbee.nwtrack.users.ProcessAssignmentService;
+import com.yesbee.nwtrack.workflow.ProcessMachineService;
+import java.util.HexFormat;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @RestController @RequestMapping("/api/v1/sync") @Tag(name="Offline synchronization")
 @PreAuthorize("isAuthenticated()")
 public class SyncController {
-    private final JdbcTemplate jdbc;private final ActorResolver actors;private final OperationsService operations;private final ObjectMapper json;private final com.yesbee.nwtrack.auth.AccessPolicy access;private final com.yesbee.nwtrack.users.ProcessAssignmentService assignments;private final com.yesbee.nwtrack.workflow.ProcessMachineService machines;private final org.springframework.transaction.support.TransactionTemplate transactions;
-    public SyncController(JdbcTemplate jdbc,ActorResolver actors,OperationsService operations,ObjectMapper json,com.yesbee.nwtrack.auth.AccessPolicy access,com.yesbee.nwtrack.workflow.ProcessMachineService machines,org.springframework.transaction.PlatformTransactionManager manager,com.yesbee.nwtrack.users.ProcessAssignmentService assignments){this.jdbc=jdbc;this.actors=actors;this.operations=operations;this.json=json;this.access=access;this.assignments=assignments;this.machines=machines;this.transactions=new org.springframework.transaction.support.TransactionTemplate(manager);}
+    private final JdbcTemplate jdbc;private final ActorResolver actors;private final OperationsService operations;private final ObjectMapper json;private final AccessPolicy access;private final ProcessAssignmentService assignments;private final ProcessMachineService machines;private final TransactionTemplate transactions;
+    public SyncController(JdbcTemplate jdbc,ActorResolver actors,OperationsService operations,ObjectMapper json,AccessPolicy access,ProcessMachineService machines,PlatformTransactionManager manager,ProcessAssignmentService assignments){this.jdbc=jdbc;this.actors=actors;this.operations=operations;this.json=json;this.access=access;this.assignments=assignments;this.machines=machines;this.transactions=new TransactionTemplate(manager);}
     @GetMapping("/bootstrap") public Map<String,Object> bootstrap(@AuthenticationPrincipal Jwt jwt){
         UUID actor=actors.id(jwt);Map<String,Object> result=new LinkedHashMap<>();
         result.put("processAssignments",assignments.list(actor));
-        result.put("visits",com.yesbee.nwtrack.shared.Pages.query(jdbc,"select sv.id,sv.station_id,sv.lot_id,l.lot_number,st.style_number,sv.status,sv.dispatched_at,sv.version from station_visits sv join lots l on l.id=sv.lot_id join styles st on st.id=l.style_id where "+access.stationPredicate("sv.station_id")+" and sv.status in ('DISPATCHED','RECEIVED','ACTIVE','READY_FOR_DISPATCH') order by sv.id"));
-        result.put("processes",com.yesbee.nwtrack.shared.Pages.query(jdbc,"select pe.id,pe.station_visit_id,pe.process_id,p.code,p.name,p.quality,p.nfc_mode,pe.sequence_no,pe.status,pe.version from process_executions pe join processes p on p.id=pe.process_id join station_visits sv on sv.id=pe.station_visit_id where "+access.stationPredicate("sv.station_id")+" and "+access.processPredicate("pe.process_id")+" and sv.status in ('DISPATCHED','RECEIVED','ACTIVE','READY_FOR_DISPATCH') order by pe.id"));
+        result.put("visits",Pages.query(jdbc,"select sv.id,sv.station_id,sv.lot_id,l.lot_number,st.style_number,sv.status,sv.dispatched_at,sv.version from station_visits sv join lots l on l.id=sv.lot_id join styles st on st.id=l.style_id where "+access.stationPredicate("sv.station_id")+" and sv.status in ('DISPATCHED','RECEIVED','ACTIVE','READY_FOR_DISPATCH') order by sv.id"));
+        result.put("processes",Pages.query(jdbc,"select pe.id,pe.station_visit_id,pe.process_id,p.code,p.name,p.quality,p.nfc_mode,pe.sequence_no,pe.status,pe.version from process_executions pe join processes p on p.id=pe.process_id join station_visits sv on sv.id=pe.station_visit_id where "+access.stationPredicate("sv.station_id")+" and "+access.processPredicate("pe.process_id")+" and sv.status in ('DISPATCHED','RECEIVED','ACTIVE','READY_FOR_DISPATCH') order by pe.id"));
         result.put("serverTime",OffsetDateTime.now());return result;
     }
     @GetMapping("/changes") public Map<String,Object> changes(@RequestParam OffsetDateTime since,@RequestParam(required=false) OffsetDateTime until,@AuthenticationPrincipal Jwt jwt){
         OffsetDateTime watermark=until==null?OffsetDateTime.now():until;
         if(watermark.isBefore(since)||watermark.isAfter(OffsetDateTime.now()))throw new IllegalArgumentException("until must be between since and the current time");
         Map<String,Object> result=new LinkedHashMap<>();
-        result.put("processEvents",com.yesbee.nwtrack.shared.Pages.query(jdbc,"select pse.* from process_state_events pse join process_executions pe on pe.id=pse.process_execution_id join station_visits sv on sv.id=pe.station_visit_id where "+access.stationPredicate("sv.station_id")+" and "+access.processPredicate("pe.process_id")+" and pse.occurred_at>? and pse.occurred_at<=? order by pse.occurred_at,pse.id",since,watermark));
-        result.put("locationEvents",com.yesbee.nwtrack.shared.Pages.query(jdbc,"select le.* from lot_location_events le where "+access.lotPredicate("le.lot_id")+" and le.occurred_at>? and le.occurred_at<=? order by le.occurred_at,le.id",since,watermark));
+        result.put("processEvents",Pages.query(jdbc,"select pse.* from process_state_events pse join process_executions pe on pe.id=pse.process_execution_id join station_visits sv on sv.id=pe.station_visit_id where "+access.stationPredicate("sv.station_id")+" and "+access.processPredicate("pe.process_id")+" and pse.occurred_at>? and pse.occurred_at<=? order by pse.occurred_at,pse.id",since,watermark));
+        result.put("locationEvents",Pages.query(jdbc,"select le.* from lot_location_events le where "+access.lotPredicate("le.lot_id")+" and le.occurred_at>? and le.occurred_at<=? order by le.occurred_at,le.id",since,watermark));
         result.put("serverTime",watermark);return result;
     }
     @PostMapping("/events") public List<EventResult> events(@Valid @RequestBody EventBatch batch,@AuthenticationPrincipal Jwt jwt){
@@ -49,7 +57,7 @@ public class SyncController {
                 results.add(transactions.execute(status->record(batch.deviceId(),event,hash,actor,null)));
             }catch(RuntimeException ex){
                 if(ex instanceof BusinessRuleException rule && "SYNC_EVENT_CONFLICT".equals(rule.code()))throw ex;
-                if(ex instanceof org.springframework.security.access.AccessDeniedException)throw ex;
+                if(ex instanceof AccessDeniedException)throw ex;
                 results.add(transactions.execute(status->record(batch.deviceId(),event,hash,actor,Objects.toString(ex.getMessage(),"Event rejected"))));
             }
         }
@@ -60,7 +68,7 @@ public class SyncController {
         List<Map<String,Object>> existing=jdbc.queryForList("select actor_id,payload_hash,outcome from sync_events where id=?",event.id());
         if(!existing.isEmpty()){
             var row=existing.getFirst();
-            if(!actor.equals(row.get("actor_id")))throw new org.springframework.security.access.AccessDeniedException("Event belongs to another user");
+            if(!actor.equals(row.get("actor_id")))throw new AccessDeniedException("Event belongs to another user");
             if(!hash.equals(row.get("payload_hash")))throw new BusinessRuleException("SYNC_EVENT_CONFLICT","Event ID was already used with different content");
             return new EventResult(event.id(),row.get("outcome").toString(),"duplicate");
         }
@@ -74,6 +82,6 @@ public class SyncController {
         if(!"PROCESS_EXECUTION".equals(event.aggregateType()))throw new IllegalArgumentException("aggregateType must be PROCESS_EXECUTION");
         machines.transition(event.aggregateId(),action,event.reason(),event.processNfcUid(),event.machineNfcUids(),actor);
     }
-    private String hash(ClientEvent event){try{byte[] value=json.writeValueAsBytes(event);return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));}catch(Exception e){throw new IllegalStateException(e);}}
+    private String hash(ClientEvent event){try{byte[] value=json.writeValueAsBytes(event);return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));}catch(Exception e){throw new IllegalStateException(e);}}
     public record EventBatch(@NotBlank String deviceId,@NotEmpty List<@Valid ClientEvent> events){} public record ClientEvent(@NotNull UUID id,@NotBlank String aggregateType,@NotNull UUID aggregateId,@NotBlank String eventType,String reason,@NotNull OffsetDateTime occurredAt,String processNfcUid,List<String> machineNfcUids){} public record EventResult(UUID id,String outcome,String detail){}
 }
