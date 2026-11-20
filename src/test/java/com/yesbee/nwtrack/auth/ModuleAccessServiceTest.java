@@ -20,14 +20,16 @@ class ModuleAccessServiceTest {
         assertThatThrownBy(()->modules.authorize("/api/v1/lots","GET")).isInstanceOf(AccessDeniedException.class).hasMessageContaining("initial password");
         assertThatThrownBy(()->modules.authorize("/api/v1/auth/refresh-tokens","POST")).isInstanceOf(AccessDeniedException.class);
     }
-    @Test void grantsLotManagementWithoutUnlockingStyleEditingOrOperations(){
+    @Test void grantsConfiguratorDraftEditingAndConfigurationModulesWithoutOperations(){
         var jdbc=mock(JdbcTemplate.class);var access=mock(AccessPolicy.class);
         UUID actor=UUID.randomUUID();when(access.actor()).thenReturn(actor);
         when(jdbc.queryForObject("select count(*) from users where id=? and initial_password_expires_at is not null",Integer.class,actor)).thenReturn(0);
         when(access.clientType()).thenReturn("PC");when(access.role()).thenReturn("STYLE_CONFIGURATOR");
         when(access.ownStylesOnly()).thenReturn(true);
         when(access.token()).thenReturn(Jwt.withTokenValue("test").header("alg","HS256").subject("creator").build());
-        when(access.modulesForUsername("creator")).thenReturn(List.of(Map.of("key","lots"),Map.of("key","newstyle")));
+        when(access.modulesForUsername("creator")).thenReturn(List.of(
+            Map.of("key","lots"),Map.of("key","newstyle"),Map.of("key","process"),
+            Map.of("key","tags"),Map.of("key","storage"),Map.of("key","trolleys")));
         var modules=new ModuleAccessService(jdbc,access);
         modules.authorize("/api/v1/styles/"+UUID.randomUUID()+"/lots","POST");
         modules.authorize("/api/v1/lots/"+UUID.randomUUID()+"/cancel","POST");
@@ -35,9 +37,28 @@ class ModuleAccessServiceTest {
         modules.authorize("/api/v1/lots/"+UUID.randomUUID()+"/trolley","DELETE");
         modules.authorize("/api/v1/trolleys/available","GET");
         modules.authorize("/api/v1/styles/"+UUID.randomUUID()+"/release","POST");
+        modules.authorize("/api/v1/styles/"+UUID.randomUUID(),"PUT");
         modules.authorize("/api/v1/lots/"+UUID.randomUUID(),"PUT");
+        modules.authorize("/api/v1/processes","POST");
+        modules.authorize("/api/v1/nfc-tags","POST");
+        modules.authorize("/api/v1/storage-areas","POST");
+        modules.authorize("/api/v1/trolleys","GET");
         assertThatThrownBy(()->modules.authorize("/api/v1/styles/"+UUID.randomUUID()+"/processes","PUT")).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(()->modules.authorize("/api/v1/lots/"+UUID.randomUUID()+"/dispatch","POST")).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(()->modules.authorize("/api/v1/trolleys","GET")).isInstanceOf(AccessDeniedException.class);
+    }
+    @Test void limitsPadConfiguratorToOwnedStyleLotAndTrolleyEndpoints(){
+        var jdbc=mock(JdbcTemplate.class);var access=mock(AccessPolicy.class);
+        UUID actor=UUID.randomUUID();when(access.actor()).thenReturn(actor);
+        when(jdbc.queryForObject("select count(*) from users where id=? and initial_password_expires_at is not null",Integer.class,actor)).thenReturn(0);
+        when(access.clientType()).thenReturn("PAD");when(access.role()).thenReturn("STYLE_CONFIGURATOR");
+        var modules=new ModuleAccessService(jdbc,access);String id=UUID.randomUUID().toString();
+        for(String path:List.of("/api/v1/styles","/api/v1/styles/"+id,"/api/v1/styles/"+id+"/lots",
+            "/api/v1/lots","/api/v1/lots/"+id,"/api/v1/trolleys","/api/v1/trolleys/available","/api/v1/trolleys/"+id))
+            modules.authorize(path,"GET");
+        modules.authorize("/api/v1/lots/"+id+"/trolley","PUT");
+        modules.authorize("/api/v1/lots/"+id+"/trolley","DELETE");
+        assertThatThrownBy(()->modules.authorize("/api/v1/styles","POST")).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(()->modules.authorize("/api/v1/lots/"+id+"/dispatch","POST")).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(()->modules.authorize("/api/v1/processes","GET")).isInstanceOf(AccessDeniedException.class);
     }
 }

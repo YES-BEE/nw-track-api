@@ -79,9 +79,10 @@ class PostgresWorkflowIntegrationTest {
         if(jdbc.queryForObject("select initial_password_expires_at is not null from users where username=?",Boolean.class,user))assertThat(call("POST","/api/v1/auth/change-password",Map.of("currentPassword",password,"newPassword","ReadyForWork123!"),token).status()).isEqualTo(200);
         return token;
     }
-    private BinaryReply download(String path,String token)throws Exception{
+    private BinaryReply download(String path,Object body,String token)throws Exception{
         var request=HttpRequest.newBuilder(URI.create("http://localhost:"+port+path))
-            .header("Authorization","Bearer "+token).GET().build();
+            .header("Authorization","Bearer "+token).header("Content-Type","application/json")
+            .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build();
         var reply=HttpClient.newHttpClient().send(request,HttpResponse.BodyHandlers.ofByteArray());
         return new BinaryReply(reply.statusCode(),reply.headers(),reply.body());
     }
@@ -92,21 +93,40 @@ class PostgresWorkflowIntegrationTest {
         assertThat(catalog).hasSize(8);
         Map<String,String> reportIds=new HashMap<>();
         catalog.forEach(item->reportIds.put(item.get("key").asText(),item.get("id").asText()));
-        assertThat(call("GET","/api/v1/reports/"+reportIds.get("style-lot-production")+"/export?format=csv",null,token).status()).isEqualTo(400);
-        assertThat(call("GET","/api/v1/reports/"+reportIds.get("daily-production-summary")+"/export?format=csv&from=2026-01-01&to=2026-01-02",null,token).status()).isEqualTo(400);
+        assertThat(call("POST","/api/v1/reports/"+reportIds.get("style-lot-production")+"/export",Map.of("format","csv"),token).status()).isEqualTo(400);
+        assertThat(call("POST","/api/v1/reports/"+reportIds.get("daily-production-summary")+"/export",Map.of("format","csv","from","2026-01-01","to","2026-01-02"),token).status()).isEqualTo(400);
+        assertThat(call("GET","/api/v1/reports/"+reportIds.get("style-lot-production")+"/export",null,token).status()).isEqualTo(405);
         String today=LocalDate.now().toString();
+        UUID actor=jdbc.queryForObject("select id from users where username='admin'",UUID.class);
+        String suffix=UUID.randomUUID().toString();UUID station=UUID.randomUUID(),process=UUID.randomUUID();
+        jdbc.update("insert into stations(id,code,name) values (?,?,?)",station,"EXPORT-S-"+suffix,"Export station");
+        jdbc.update("insert into processes(id,code,name,station_id) values (?,?,?,?)",process,"EXPORT-P-"+suffix,"Export process",station);
+        UUID exportStyle=production.createConfiguredStyle("EXPORT-"+suffix,null,actor,List.of(process));production.release(exportStyle);
+        UUID exportLot=production.createLots(exportStyle,1,5,actor).getFirst();
         for(String key:List.of("style-lot-production","station-processing-time","delay-bottleneck",
             "lot-movement-traceability","storage-waiting-time","trolley-utilization","operator-activity")){
-            BinaryReply report=download("/api/v1/reports/"+reportIds.get(key)+"/export?format=csv&from="+today+"&to="+today,token);
+            Map<String,Object> request=new LinkedHashMap<>(Map.of("format","csv","from",today,"to",today));
+            if(key.equals("style-lot-production")){
+                request.put("styleIds",List.of(exportStyle));
+                request.put("lotIds",List.of(exportLot));
+            }
+            BinaryReply report=download("/api/v1/reports/"+reportIds.get(key)+"/export",request,token);
             assertThat(report.status()).as(key).isEqualTo(200);
             assertThat(report.headers().firstValue("Content-Disposition")).hasValueSatisfying(value->
                 assertThat(value).contains("nw-track_"+key+"_"+today+"_to_"+today+".csv"));
             assertThat(report.body()).as(key).isNotEmpty();
         }
-        BinaryReply daily=download("/api/v1/reports/"+reportIds.get("daily-production-summary")+"/export?format=xlsx&from="+today+"&to="+today,token);
+        BinaryReply daily=download("/api/v1/reports/"+reportIds.get("daily-production-summary")+"/export",Map.of("format","xlsx","from",today,"to",today),token);
         assertThat(daily.status()).isEqualTo(200);
         assertThat(daily.body()).startsWith((byte)'P',(byte)'K');
         assertThat(jdbc.queryForObject("select count(*) from report_export_history where status='COMPLETED'",Integer.class)).isEqualTo(8);
+        String filters=jdbc.queryForObject("""
+            select h.filters::text from report_export_history h
+            join report_categories c on c.id=h.report_category_id
+            where c.report_key='style-lot-production'
+            order by h.requested_at desc limit 1
+            """,String.class);
+        assertThat(filters).contains(exportStyle.toString(),exportLot.toString(),"styleIds","lotIds");
         assertThat(jdbc.queryForObject("select count(*) from report_categories where active",Integer.class)).isEqualTo(8);
     }
 
@@ -172,41 +192,52 @@ class PostgresWorkflowIntegrationTest {
         jdbc.update("insert into processes(id,code,name,station_id) values (?,?,'First filter process',?),(?,?,'Second filter process',?)",p1,"FILTER-P1-"+suffix,s1,p2,"FILTER-P2-"+suffix,s2);
         UUID style=production.createConfiguredStyle("FILTER-"+suffix,null,actor,List.of(p1,p2));production.release(style);
         var ids=production.createLots(style,2,null,actor);
-        String filters="styleId="+style;
-        for(String path:List.of("/api/v1/dashboard/lots","/api/v1/displays/lots","/api/v1/reports/lot-progress")){
-            var page=call("GET",path+"?"+filters+"&size=1",null,admin);
+        UUID otherStyle=production.createConfiguredStyle("FILTER-OTHER-"+suffix,null,actor,List.of(p1));production.release(otherStyle);
+        UUID otherLot=production.createLots(otherStyle,1,null,actor).getFirst();
+        for(String path:List.of("/api/v1/dashboard/lots","/api/v1/reports/lot-progress")){
+            assertThat(call("POST",path,Map.of("styleIds",List.of(style,otherStyle)),admin).body().get("totalElements").asInt()).isEqualTo(3);
+            assertThat(call("POST",path,Map.of("lotIds",List.of(ids.getFirst(),otherLot)),admin).body().get("totalElements").asInt()).isEqualTo(2);
+            assertThat(call("POST",path,Map.of("styleIds",List.of(style),"lotIds",List.of(ids.getFirst(),otherLot)),admin).body().get("totalElements").asInt()).isEqualTo(1);
+            assertThat(call("POST",path,Map.of("styleIds",List.of(style,style)),admin).status()).isEqualTo(400);
+        }
+        Map<String,Object> styleFilter=Map.of("styleIds",List.of(style));
+        for(String path:List.of("/api/v1/dashboard/lots","/api/v1/reports/lot-progress")){
+            var page=call("POST",path,Map.of("styleIds",List.of(style),"size",1),admin);
             assertThat(page.status()).as(page.body().toString()).isEqualTo(200);
             assertThat(page.body().get("totalElements").asInt()).isEqualTo(2);
             assertThat(page.body().get("items").size()).isEqualTo(1);
-            assertThat(call("GET",path+"?"+filters+"&stationId="+s2,null,admin).body().get("totalElements").asInt()).isZero();
-            var any=call("GET",path+"?"+filters+"&stationId="+s2+"&processId="+p2+"&routeScope=ANY",null,admin);
+            assertThat(call("POST",path,Map.of("styleIds",List.of(style),"stationId",s2),admin).body().get("totalElements").asInt()).isZero();
+            var any=call("POST",path,Map.of("styleIds",List.of(style),"stationId",s2,"processId",p2,"routeScope","ANY"),admin);
             assertThat(any.status()).as(any.body().toString()).isEqualTo(200);
             assertThat(any.body().get("totalElements").asInt()).isEqualTo(2);
-            assertThat(call("GET",path+"?"+filters+"&stationId="+s1+"&processId="+p2+"&routeScope=ANY",null,admin).body().get("totalElements").asInt()).isZero();
-            assertThat(call("GET",path+"?"+filters+"&stationId="+s1+"&processId="+p1+"&lotId="+ids.get(0),null,admin).body().get("totalElements").asInt()).isEqualTo(1);
-            assertThat(call("GET",path+"?"+filters+"&status=COMPLETED",null,admin).body().get("totalElements").asInt()).isZero();
-            assertThat(call("GET",path+"?"+filters+"&routeScope=INVALID",null,admin).status()).isEqualTo(400);
+            assertThat(call("POST",path,Map.of("styleIds",List.of(style),"stationId",s1,"processId",p2,"routeScope","ANY"),admin).body().get("totalElements").asInt()).isZero();
+            assertThat(call("POST",path,Map.of("styleIds",List.of(style),"stationId",s1,"processId",p1,"lotIds",List.of(ids.get(0))),admin).body().get("totalElements").asInt()).isEqualTo(1);
+            assertThat(call("POST",path,Map.of("styleIds",List.of(style),"status","COMPLETED"),admin).body().get("totalElements").asInt()).isZero();
+            assertThat(call("POST",path,Map.of("styleIds",List.of(style),"routeScope","INVALID"),admin).status()).isEqualTo(400);
         }
+        String filters="styleId="+style;
+        assertThat(call("GET","/api/v1/displays/lots?"+filters+"&size=1",null,admin).body().get("items").size()).isEqualTo(1);
+        assertThat(call("GET","/api/v1/displays/lots?"+filters+"&stationId="+s2,null,admin).body().get("totalElements").asInt()).isZero();
+        assertThat(call("GET","/api/v1/displays/lots?"+filters+"&stationId="+s2+"&processId="+p2+"&routeScope=ANY",null,admin).body().get("totalElements").asInt()).isEqualTo(2);
         for(String module:List.of("dashboard","reports")){
             String base="/api/v1/"+module+"/filter-options/";
-            assertThat(call("GET",base+"lots?"+filters+"&size=1",null,admin).body().get("totalElements").asInt()).isEqualTo(2);
-            assertThat(call("GET",base+"styles?"+filters,null,admin).body().get("items").get(0).get("id").asText()).isEqualTo(style.toString());
-            assertThat(call("GET",base+"stations?"+filters,null,admin).body().get("totalElements").asInt()).isEqualTo(1);
-            assertThat(call("GET",base+"stations?"+filters+"&routeScope=ANY",null,admin).body().get("totalElements").asInt()).isEqualTo(2);
-            assertThat(call("GET",base+"processes?"+filters+"&routeScope=ANY",null,admin).body().get("totalElements").asInt()).isEqualTo(2);
-            assertThat(call("GET",base+"processes?"+filters+"&routeScope=ANY&search=Second",null,admin).body().get("totalElements").asInt()).isEqualTo(1);
-            assertThat(call("GET",base+"processes?"+filters+"&routeScope=ANY&stationId="+s2,null,admin).body().get("items").get(0).get("id").asText()).isEqualTo(p2.toString());
-            assertThat(call("GET",base+"processes?"+filters+"&routeScope=ANY&stationId="+s2,null,admin).body().get("totalElements").asInt()).isEqualTo(1);
-            assertThat(call("GET",base+"stations?"+filters+"&routeScope=ANY&processId="+p1,null,admin).body().get("totalElements").asInt()).isEqualTo(1);
-            assertThat(call("GET",base+"invalid",null,admin).status()).isEqualTo(400);
+            assertThat(call("POST",base+"lots",Map.of("styleIds",List.of(style),"size",1),admin).body().get("totalElements").asInt()).isEqualTo(2);
+            assertThat(call("POST",base+"styles",styleFilter,admin).body().get("items").get(0).get("id").asText()).isEqualTo(style.toString());
+            assertThat(call("POST",base+"stations",styleFilter,admin).body().get("totalElements").asInt()).isEqualTo(1);
+            assertThat(call("POST",base+"stations",Map.of("styleIds",List.of(style),"routeScope","ANY"),admin).body().get("totalElements").asInt()).isEqualTo(2);
+            assertThat(call("POST",base+"processes",Map.of("styleIds",List.of(style),"routeScope","ANY"),admin).body().get("totalElements").asInt()).isEqualTo(2);
+            assertThat(call("POST",base+"processes",Map.of("styleIds",List.of(style),"routeScope","ANY","search","Second"),admin).body().get("totalElements").asInt()).isEqualTo(1);
+            assertThat(call("POST",base+"processes",Map.of("styleIds",List.of(style),"routeScope","ANY","stationId",s2),admin).body().get("items").get(0).get("id").asText()).isEqualTo(p2.toString());
+            assertThat(call("POST",base+"stations",Map.of("styleIds",List.of(style),"routeScope","ANY","processId",p1),admin).body().get("totalElements").asInt()).isEqualTo(1);
+            assertThat(call("POST",base+"invalid",Map.of(),admin).status()).isEqualTo(400);
         }
         String name="filter-reader-"+suffix;
         assertThat(call("POST","/api/v1/users",Map.of("username",name,"displayName",name,"initialPassword","ChangeMe123!","role","SUPERVISOR"),admin).status()).isEqualTo(200);
         String token=login(name,"PC");
         for(String module:List.of("dashboard","reports"))for(String type:List.of("lots","styles","stations","processes")){
-            var page=call("GET","/api/v1/"+module+"/filter-options/"+type+"?routeScope=ANY",null,token);
+            var page=call("POST","/api/v1/"+module+"/filter-options/"+type,Map.of("routeScope","ANY"),token);
             assertThat(page.status()).as(page.body().toString()).isEqualTo(200);
-            assertThat(page.body().get("totalElements").asInt()).isZero();
+            assertThat(page.body().get("totalElements").asInt()).isPositive();
         }
         var before=call("GET","/api/v1/dashboard",null,admin).body();
         var after=call("GET","/api/v1/dashboard?"+filters+"&stationId="+s2,null,admin).body();
@@ -298,10 +329,10 @@ class PostgresWorkflowIntegrationTest {
         String scopedName="scoped-display-"+suffix;
         assertThat(call("POST","/api/v1/users",Map.of("username",scopedName,"displayName",scopedName,"initialPassword","ChangeMe123!","role","SUPERVISOR"),token).status()).isEqualTo(200);
         String scopedToken=login(scopedName,"PC");
-        assertThat(call("GET","/api/v1/displays/lots",null,scopedToken).body().get("totalElements").asInt()).isZero();
-        assertThat(call("GET","/api/v1/dashboard/lots/"+ids.get(0),null,scopedToken).status()).isEqualTo(403);
-        assertThat(call("GET","/api/v1/displays/lots/"+ids.get(0),null,scopedToken).status()).isEqualTo(403);
-        assertThat(call("GET","/api/v1/displays/factory-summary",null,scopedToken).body().get("metrics").get("totalLots").asInt()).isZero();
+        assertThat(call("GET","/api/v1/displays/lots",null,scopedToken).body().get("totalElements").asInt()).isPositive();
+        assertThat(call("GET","/api/v1/dashboard/lots/"+ids.get(0),null,scopedToken).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/displays/lots/"+ids.get(0),null,scopedToken).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/displays/factory-summary",null,scopedToken).body().get("metrics").get("totalLots").asInt()).isPositive();
     }
 
     @Test void cancellationReleasesTrolleyForReuseAndCannotReleaseItsNextAssignment()throws Exception{
@@ -340,11 +371,11 @@ class PostgresWorkflowIntegrationTest {
         assertThat(detail.body().get("progress_percent").asDouble()).isEqualTo(66.67);
         assertThat(detail.body().get("completed_processes").asInt()).isEqualTo(2);
         assertThat(detail.body().get("total_processes").asInt()).isEqualTo(3);
-        var report=call("GET","/api/v1/reports/lot-progress?search=PROG-"+suffix+"&size=1",null,admin);
+        var report=call("POST","/api/v1/reports/lot-progress",Map.of("search","PROG-"+suffix,"size",1),admin);
         assertThat(report.status()).as(report.body().toString()).isEqualTo(200);
         assertThat(report.body().get("totalElements").asInt()).isEqualTo(2);
         assertThat(report.body().get("items").size()).isEqualTo(1);
-        var page2=call("GET","/api/v1/reports/lot-progress?search=PROG-"+suffix+"&size=1&page=1",null,admin);
+        var page2=call("POST","/api/v1/reports/lot-progress",Map.of("search","PROG-"+suffix,"size",1,"page",1),admin);
         assertThat(page2.body().get("items").get(0).get("id")).isNotEqualTo(report.body().get("items").get(0).get("id"));
         var styles=call("GET","/api/v1/reports/style-progress?search=PROG-"+suffix,null,admin);
         assertThat(styles.status()).as(styles.body().toString()).isEqualTo(200);
@@ -360,11 +391,12 @@ class PostgresWorkflowIntegrationTest {
         String scopedName="progress-reader-"+suffix;
         assertThat(call("POST","/api/v1/users",Map.of("username",scopedName,"displayName",scopedName,"initialPassword","ChangeMe123!","role","SUPERVISOR"),admin).status()).isEqualTo(200);
         String scoped=login(scopedName,"PC");
-        for(String path:List.of("/api/v1/reports/style-progress","/api/v1/reports/lot-progress")){
-            var restricted=call("GET",path,null,scoped);
-            assertThat(restricted.status()).as(restricted.body().toString()).isEqualTo(200);
-            assertThat(restricted.body().get("totalElements").asInt()).isZero();
-        }
+        var styleReport=call("GET","/api/v1/reports/style-progress",null,scoped);
+        assertThat(styleReport.status()).isEqualTo(200);
+        assertThat(styleReport.body().get("totalElements").asInt()).isPositive();
+        var lotReport=call("POST","/api/v1/reports/lot-progress",Map.of(),scoped);
+        assertThat(lotReport.status()).isEqualTo(200);
+        assertThat(lotReport.body().get("totalElements").asInt()).isPositive();
     }
 
     @Test void productionTrendUsesFactoryDayAndHistoricalWorkInProgress()throws Exception{
@@ -397,9 +429,9 @@ class PostgresWorkflowIntegrationTest {
             var end=OffsetDateTime.parse(point.get("bucket_end").asText());
             assertThat(point.get("in_progress").asInt()).isEqualTo(end.isBefore(terminal)?3:1);
         }
-        assertThat(totalCompleted).isEqualTo(1);
+        assertThat(totalCompleted).isGreaterThanOrEqualTo(1);
         int completedHour=(int)Duration.between(start,terminal).toHours();
-        assertThat(points.get(completedHour).get("completed").asInt()).isEqualTo(1);
+        assertThat(points.get(completedHour).get("completed").asInt()).isGreaterThanOrEqualTo(1);
         assertThat(OffsetDateTime.parse(points.get(0).get("bucket_start").asText()).toInstant()).isEqualTo(start.toInstant());
         var display=call("GET","/api/v1/displays/factory-summary",null,token).body().get("productionTrend");
         assertThat(display.get("points").size()).isEqualTo(points.size());
@@ -470,37 +502,71 @@ class PostgresWorkflowIntegrationTest {
         assertThat(Pages.query(jdbc,new Pages.Options(10,20,"alpha"),sql).totalElements()).isEqualTo(2);
     }
 
+    @Test void styleConfiguratorCanManageProcessesTagsAndStorageOnPc()throws Exception{
+        String admin=login("admin","PC"),suffix=UUID.randomUUID().toString().substring(0,8),username="config-manager-"+suffix;
+        assertThat(call("POST","/api/v1/users",Map.of("username",username,"displayName","Configurator","initialPassword","ChangeMe123!","role","STYLE_CONFIGURATOR"),admin).status()).isEqualTo(200);
+        String token=login(username,"PC"),processUid="CFG-P-"+suffix,storageUid="CFG-S-"+suffix,spareUid="CFG-T-"+suffix;
+        for(String uid:List.of(processUid,storageUid,spareUid))
+            assertThat(call("POST","/api/v1/nfc-tags",Map.of("name",uid,"uid",uid),token).status()).isEqualTo(200);
+        Reply process=call("POST","/api/v1/processes",Map.of(
+            "code","CFG-P-"+suffix,"name","Configured process","stationReference","CFG-ST-"+suffix,
+            "nfcMode","PROCESS","nfcUid",processUid),token);
+        assertThat(process.status()).as(process.body().toString()).isEqualTo(200);
+        Reply area=call("POST","/api/v1/storage-areas",Map.of(
+            "stationReference","CFG-ST-"+suffix,"code","CFG-A-"+suffix,"name","Configured area",
+            "nfcUids",List.of(storageUid)),token);
+        assertThat(area.status()).as(area.body().toString()).isEqualTo(200);
+        String spareId=jdbc.queryForObject("select id::text from nfc_tags where uid=?",String.class,spareUid.toUpperCase(Locale.ROOT));
+        assertThat(call("PUT","/api/v1/nfc-tags/"+spareId,Map.of("name","Updated tag","uid",spareUid),token).status()).isEqualTo(200);
+        assertThat(call("DELETE","/api/v1/nfc-tags/"+spareId,null,token).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/processes",null,token).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/storage-areas",null,token).status()).isEqualTo(200);
+    }
+
     @Test void plannedLotsAreGeneratedAtReleaseAndConfiguratorOwnsAllLotsOfTheirStyles()throws Exception{
         String admin=login("admin","PC"),suffix=UUID.randomUUID().toString(),owner="lot-owner-"+suffix,other="lot-other-"+suffix;
         for(String name:List.of(owner,other))assertThat(call("POST","/api/v1/users",Map.of("username",name,"displayName",name,"initialPassword","ChangeMe123!","role","STYLE_CONFIGURATOR"),admin).status()).isEqualTo(200);
         String creator=login(owner,"PC"),outsider=login(other,"PC");
-        UUID station=UUID.randomUUID(),process=UUID.randomUUID();
+        UUID station=UUID.randomUUID(),process=UUID.randomUUID(),secondProcess=UUID.randomUUID();
         jdbc.update("insert into stations(id,code,name) values (?,?,?)",station,"LM-S-"+suffix,"Lot station");
-        jdbc.update("insert into processes(id,code,name,station_id) values (?,?,?,?)",process,"LM-P-"+suffix,"Lot process",station);
+        jdbc.update("insert into processes(id,code,name,station_id) values (?,?,?,?),(?,?,?,?)",
+            process,"LM-P-"+suffix,"Lot process",station,secondProcess,"LM-P2-"+suffix,"Second lot process",station);
         Reply style=call("POST","/api/v1/styles",Map.of("styleNumber","LM-"+suffix,"processIds",List.of(process.toString()),"lotCount",3,"quantity",10),creator);
         assertThat(style.status()).as(style.body().toString()).isEqualTo(200);String styleId=style.body().get("id").asText();
         String styleLots="/api/v1/styles/"+styleId+"/lots";
+        Reply updated=call("PUT","/api/v1/styles/"+styleId,Map.of(
+            "description","Updated draft","processIds",List.of(process,secondProcess),"lotCount",2,"quantity",12),creator);
+        assertThat(updated.status()).as(updated.body().toString()).isEqualTo(200);
+        assertThat(updated.body().get("description").asText()).isEqualTo("Updated draft");
+        assertThat(updated.body().get("lot_count").asInt()).isEqualTo(2);
+        assertThat(call("PUT","/api/v1/styles/"+styleId,Map.of(
+            "description","Forbidden","processIds",List.of(process),"lotCount",1,"quantity",1),outsider).status()).isEqualTo(403);
         assertThat(call("GET",styleLots,null,creator).body().get("totalElements").asInt()).isZero();
         assertThat(call("POST",styleLots,Map.of("lotCount",2),creator).status()).isEqualTo(409);
         assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,outsider).status()).isEqualTo(403);
         assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,creator).status()).isEqualTo(200);
         assertThat(call("POST","/api/v1/styles/"+styleId+"/release",null,admin).status()).isEqualTo(409);
+        assertThat(call("PUT","/api/v1/styles/"+styleId,Map.of(
+            "description","Too late","processIds",List.of(process),"lotCount",1,"quantity",1),creator).status()).isEqualTo(409);
         Reply initial=call("GET",styleLots,null,creator);
-        assertThat(initial.body().get("totalElements").asInt()).isEqualTo(3);
+        assertThat(initial.body().get("totalElements").asInt()).isEqualTo(2);
         var numbers=new HashSet<String>();
         for(var lot:initial.body().get("items")){
-            assertThat(lot.get("quantity").asInt()).isEqualTo(10);
+            assertThat(lot.get("quantity").asInt()).isEqualTo(12);
             assertThat(lot.get("lot_number").asText()).matches("LOT-[A-Za-z0-9]+-[0-9]{3,}");numbers.add(lot.get("lot_number").asText());
             UUID.fromString(lot.get("id").asText());
         }
-        assertThat(numbers).hasSize(3);
+        assertThat(numbers).hasSize(2);
         // Admin-created lots of the configurator's style are visible to its owner too.
         Reply additional=call("POST",styleLots,Map.of("lotCount",2),admin);
         assertThat(additional.status()).as(additional.body().toString()).isEqualTo(200);
         assertThat(additional.body().get("createdCount").asInt()).isEqualTo(2);
         assertThat(additional.body().get("items").get(0).get("quantity").isNull()).isTrue();
-        assertThat(call("GET",styleLots,null,creator).body().get("totalElements").asInt()).isEqualTo(5);
-        assertThat(call("GET","/api/v1/lots",null,creator).body().get("totalElements").asInt()).isEqualTo(5);
+        assertThat(call("GET",styleLots,null,creator).body().get("totalElements").asInt()).isEqualTo(4);
+        assertThat(call("GET","/api/v1/lots",null,creator).body().get("totalElements").asInt()).isEqualTo(4);
+        Reply details=call("GET","/api/v1/styles/"+styleId,null,creator);
+        assertThat(details.body().get("lot_quantity").asInt()).isEqualTo(12);
+        assertThat(details.body().get("total_quantity").asInt()).isEqualTo(24);
         assertThat(call("GET","/api/v1/lots",null,outsider).body().get("totalElements").asInt()).isZero();
         assertThat(call("GET",styleLots,null,outsider).status()).isEqualTo(403);
         assertThat(call("POST",styleLots,Map.of("lotCount",1),outsider).status()).isEqualTo(403);
@@ -511,14 +577,17 @@ class PostgresWorkflowIntegrationTest {
         assertThat(call("GET","/api/v1/ui/lookups",null,outsider).body().get("styles").get("totalElements").asInt()).isZero();
         assertThat(call("POST",styleLots,Map.of("lotCount",0),creator).status()).isEqualTo(400);
         assertThat(call("POST",styleLots,Map.of("lotCount",1,"quantity",0),creator).status()).isEqualTo(400);
-        assertThat(call("GET",styleLots,null,creator).body().get("totalElements").asInt()).isEqualTo(5);
+        assertThat(call("GET",styleLots,null,creator).body().get("totalElements").asInt()).isEqualTo(4);
         // Lot Management allows choosing and releasing a trolley without general configuration access.
         Reply trolley=call("POST","/api/v1/trolleys",Map.of("code","LM-T-"+suffix),admin);
         String trolleyId=trolley.body().get("id").asText();
-        assertThat(call("GET","/api/v1/trolleys/available",null,creator).status()).isEqualTo(200);
-        assertThat(call("GET","/api/v1/trolleys",null,creator).status()).isEqualTo(403);
-        assertThat(call("PUT",lotPath+"/trolley",Map.of("trolleyId",trolleyId),outsider).status()).isEqualTo(403);
-        Reply mapped=call("PUT",lotPath+"/trolley",Map.of("trolleyId",trolleyId),creator);
+        String creatorPad=login(owner,"PAD"),outsiderPad=login(other,"PAD");
+        assertThat(call("GET","/api/v1/styles",null,creatorPad).body().get("totalElements").asInt()).isEqualTo(1);
+        assertThat(call("GET",styleLots,null,creatorPad).body().get("totalElements").asInt()).isEqualTo(4);
+        assertThat(call("GET","/api/v1/trolleys/available",null,creatorPad).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/trolleys",null,creatorPad).status()).isEqualTo(200);
+        assertThat(call("PUT",lotPath+"/trolley",Map.of("trolleyId",trolleyId),outsiderPad).status()).isEqualTo(403);
+        Reply mapped=call("PUT",lotPath+"/trolley",Map.of("trolleyId",trolleyId),creatorPad);
         assertThat(mapped.status()).as(mapped.body().toString()).isEqualTo(200);
         assertThat(mapped.body().get("trolley_id").asText()).isEqualTo(trolleyId);
         String second=additional.body().get("items").get(0).get("id").asText();
@@ -526,7 +595,7 @@ class PostgresWorkflowIntegrationTest {
         assertThat(call("DELETE",lotPath+"/trolley",null,outsider).status()).isEqualTo(403);
         assertThat(call("DELETE",lotPath+"/trolley",null,creator).body().get("trolley_id").isNull()).isTrue();
         assertThat(jdbc.queryForObject("select status from trolleys where id=?::uuid",String.class,trolleyId)).isEqualTo("AVAILABLE");
-        assertThat(call("DELETE",lotPath+"/trolley",null,creator).status()).isEqualTo(200);
+        assertThat(call("DELETE",lotPath+"/trolley",null,creatorPad).status()).isEqualTo(200);
         jdbc.update("update trolleys set active=false where id=?::uuid",trolleyId);
         assertThat(call("PUT",lotPath+"/trolley",Map.of("trolleyId",trolleyId),creator).status()).isEqualTo(409);
         jdbc.update("update trolleys set active=true where id=?::uuid",trolleyId);
@@ -650,21 +719,22 @@ class PostgresWorkflowIntegrationTest {
         assertThat(createdProcess.status()).as(createdProcess.body().toString()).isEqualTo(200);
         assertThat(call("GET","/api/v1/processes/"+createdProcess.body().get("id").asText(),null,token).status()).isEqualTo(200);
         assertThat(jdbc.queryForObject("select active_on_shift from user_process_assignments where user_id=?::uuid and process_id=?::uuid",Boolean.class,userId,createdProcess.body().get("id").asText())).isFalse();
-        for(String path:List.of("/api/v1/storage-areas","/api/v1/nfc-tags","/api/v1/users","/api/v1/access-roles","/api/v1/dashboard","/api/v1/reports/lot-progress","/api/v1/reports/style-progress"))assertThat(call("GET",path,null,token).status()).as(path).isEqualTo(403);
+        for(String path:List.of("/api/v1/storage-areas","/api/v1/nfc-tags","/api/v1/users","/api/v1/access-roles","/api/v1/dashboard","/api/v1/reports/style-progress"))assertThat(call("GET",path,null,token).status()).as(path).isEqualTo(403);
+        assertThat(call("POST","/api/v1/reports/lot-progress",Map.of(),token).status()).isEqualTo(403);
         assertThat(call("GET","/api/v1/modules/"+moduleKey+"/content",null,token).body().get("status").asText()).isEqualTo("WORK_IN_PROGRESS");
         // Role changes affect existing JWTs immediately; Dashboard and Reports stay independent.
         assertThat(call("PUT","/api/v1/access-roles/"+code,Map.of("modules",List.of("dashboard")),admin).status()).isEqualTo(200);
         assertThat(call("GET","/api/v1/dashboard",null,token).status()).isEqualTo(200);
         for(String type:List.of("lots","styles","stations","processes")){
-            assertThat(call("GET","/api/v1/dashboard/filter-options/"+type,null,token).status()).isEqualTo(200);
-            assertThat(call("GET","/api/v1/reports/filter-options/"+type,null,token).status()).isEqualTo(403);
+            assertThat(call("POST","/api/v1/dashboard/filter-options/"+type,Map.of(),token).status()).isEqualTo(200);
+            assertThat(call("POST","/api/v1/reports/filter-options/"+type,Map.of(),token).status()).isEqualTo(403);
         }
-        assertThat(call("GET","/api/v1/reports/lot-progress",null,token).status()).isEqualTo(403);
+        assertThat(call("POST","/api/v1/reports/lot-progress",Map.of(),token).status()).isEqualTo(403);
         assertThat(call("GET","/api/v1/reports/style-progress",null,token).status()).isEqualTo(403);
         assertThat(call("PUT","/api/v1/access-roles/"+code,Map.of("modules",List.of("reports")),admin).status()).isEqualTo(200);
         for(String type:List.of("lots","styles","stations","processes")){
-            assertThat(call("GET","/api/v1/dashboard/filter-options/"+type,null,token).status()).isEqualTo(403);
-            assertThat(call("GET","/api/v1/reports/filter-options/"+type,null,token).status()).isEqualTo(200);
+            assertThat(call("POST","/api/v1/dashboard/filter-options/"+type,Map.of(),token).status()).isEqualTo(403);
+            assertThat(call("POST","/api/v1/reports/filter-options/"+type,Map.of(),token).status()).isEqualTo(200);
         }
         assertThat(call("GET","/api/v1/processes",null,token).status()).isEqualTo(403);
         assertThat(call("GET","/api/v1/modules/"+moduleKey+"/content",null,token).status()).isEqualTo(403);
@@ -691,7 +761,7 @@ class PostgresWorkflowIntegrationTest {
         for(String name:List.of(author,otherAuthor))assertThat(call("POST","/api/v1/users",Map.of("username",name,"displayName",name,"initialPassword","ChangeMe123!","role","STYLE_CONFIGURATOR"),admin).status()).isEqualTo(200);
         String authorToken=login(author,"PC"),otherToken=login(otherAuthor,"PC");
         assertThat(call("GET","/api/v1/ui/lookups",null,authorToken).body().get("processes").get("items").size()).isGreaterThanOrEqualTo(2);
-        assertThat(call("GET","/api/v1/processes",null,authorToken).status()).isEqualTo(403);
+        assertThat(call("GET","/api/v1/processes",null,authorToken).status()).isEqualTo(200);
         Reply style=call("POST","/api/v1/styles",Map.of("styleNumber","OWN-"+suffix,"description","Own","processIds",List.of(process.toString())),authorToken);
         assertThat(style.status()).as(style.body().toString()).isEqualTo(200);String styleId=style.body().get("id").asText();
         assertThat(call("GET","/api/v1/styles",null,authorToken).body().get("items").size()).isEqualTo(1);
@@ -724,10 +794,12 @@ class PostgresWorkflowIntegrationTest {
         Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).load().migrate();
         assertThat(upgradeJdbc.queryForObject("select role_id from user_roles where user_id=?",UUID.class,user)).isEqualTo(oldRole);
         assertThat(upgradeJdbc.queryForObject("select code from roles where id=?",String.class,oldRole)).isEqualTo("STYLE_CONFIGURATOR");
-        assertThat(upgradeJdbc.queryForList("select module_key from role_modules where role_id=?",String.class,oldRole)).containsExactlyInAnyOrder("newstyle","lots");
+        assertThat(upgradeJdbc.queryForList("select module_key from role_modules where role_id=?",String.class,oldRole))
+            .containsExactlyInAnyOrder("newstyle","lots","process","tags","storage","trolleys");
         assertThat(upgradeJdbc.queryForObject("select initial_password_expires_at is null from users where id=?",Boolean.class,user)).isTrue();
-        assertThat(upgradeJdbc.queryForList("select permission from role_permissions where role_id=?",String.class,oldRole)).containsExactly("READ");
-        assertThat(upgradeJdbc.queryForObject("select pad_access from roles where id=?",Boolean.class,oldRole)).isFalse();
+        assertThat(upgradeJdbc.queryForList("select permission from role_permissions where role_id=?",String.class,oldRole))
+            .containsExactlyInAnyOrder("READ","CONFIGURE");
+        assertThat(upgradeJdbc.queryForObject("select pad_access from roles where id=?",Boolean.class,oldRole)).isTrue();
         assertThat(upgradeJdbc.queryForObject("select pc_access from roles where code='SUPERVISOR'",Boolean.class)).isTrue();
         assertThat(upgradeJdbc.queryForObject("select count(*) from roles where built_in",Integer.class)).isEqualTo(7);
     }

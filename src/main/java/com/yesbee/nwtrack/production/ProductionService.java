@@ -27,6 +27,14 @@ public class ProductionService {
         return id;
     }
     @Transactional public void setProcesses(UUID styleId,List<UUID> processIds){String status=jdbc.queryForObject("select status from styles where id=? for update",String.class,styleId);if(!"DRAFT".equals(status))throw new BusinessRuleException("STYLE_IMMUTABLE","Processes cannot change after Style release");jdbc.update("delete from style_processes where style_id=?",styleId);int sequence=1;for(UUID processId:processIds)jdbc.update("insert into style_processes(id,style_id,process_id,sequence_no) values (?,?,?,?)",UUID.randomUUID(),styleId,processId,sequence++);}
+    @Transactional public void updateDraft(UUID styleId,String description,List<UUID> processIds,int lotCount,Integer quantity){
+        String status=jdbc.queryForObject("select status from styles where id=? for update",String.class,styleId);
+        if(!"DRAFT".equals(status))throw new BusinessRuleException("STYLE_IMMUTABLE","Only DRAFT styles can be edited");
+        jdbc.update("update styles set description=?,lot_count=?,lot_quantity=?,version=version+1 where id=?",
+            description,lotCount,quantity,styleId);
+        setProcesses(styleId,processIds);
+        derive(styleId);
+    }
     public List<RouteDerivationService.RouteEntry> derive(UUID styleId){return routes.derive(selected(styleId));}
 
     @Transactional public void release(UUID styleId){String status=jdbc.queryForObject("select status from styles where id=? for update",String.class,styleId);if(!"DRAFT".equals(status))throw new BusinessRuleException("STYLE_ALREADY_RELEASED","Style is not in DRAFT state");List<RouteDerivationService.RouteEntry> route=derive(styleId);jdbc.update("delete from style_route_entries where style_id=?",styleId);for(var entry:route){UUID routeId=UUID.randomUUID();jdbc.update("insert into style_route_entries(id,style_id,station_id,sequence_no) values (?,?,?,?)",routeId,styleId,entry.stationId(),entry.sequence());int local=1;for(var p:entry.processes()){UUID styleProcessId=jdbc.queryForObject("select id from style_processes where style_id=? and process_id=?",UUID.class,styleId,p.processId());jdbc.update("insert into style_route_processes(route_entry_id,style_process_id,sequence_no) values (?,?,?)",routeId,styleProcessId,local++);}}jdbc.update("update styles set status='RELEASED',released_at=now(),version=version+1 where id=?",styleId);

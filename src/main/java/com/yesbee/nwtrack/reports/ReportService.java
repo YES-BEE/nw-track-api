@@ -80,8 +80,8 @@ public class ReportService {
         if(request.type()==ReportModels.Type.DELAY&&request.status()!=null
             &&!Set.of("ON_TIME","DELAYED").contains(request.status()))
             throw new IllegalArgumentException("status must be ON_TIME or DELAYED for delay-bottleneck");
-        return new ReportModels.Prepared(category,request,access.lotPredicate("l.id"),
-            access.stationPredicate("st.id"),access.processPredicate("p.id"));
+        return new ReportModels.Prepared(category,request,access.analyticsLotPredicate("l.id"),
+            access.analyticsStationPredicate("st.id"),access.analyticsProcessPredicate("p.id"));
     }
 
     public UUID recordRequest(ReportModels.Prepared prepared){
@@ -143,7 +143,7 @@ public class ReportService {
         var request=prepared.request();var filter=new SqlFilter();
         filter.add("l.created_at>=? and l.created_at<?",start,end);
         filter.raw(prepared.lotPredicate());
-        filter.add("l.style_id=?",request.styleId());filter.add("l.id=?",request.lotId());
+        filter.addIds("l.style_id",request.styleIds());filter.addIds("l.id",request.lotIds());
         filter.add("l.status=?",request.status());
         filter.add("exists(select 1 from station_visits fsv where fsv.lot_id=l.id and fsv.station_id=?)",request.stationId());
         filter.add("exists(select 1 from station_visits fsv join process_executions fpe on fpe.station_visit_id=fsv.id where fsv.lot_id=l.id and fpe.process_id=?)",request.processId());
@@ -242,7 +242,7 @@ public class ReportService {
         filter.add("pe.started_at>=? and pe.started_at<?",start,end);
         filter.raw(prepared.lotPredicate());filter.raw(prepared.stationPredicate());filter.raw(prepared.processPredicate());
         filter.raw(NOT_SUPERSEDED);
-        filter.add("l.style_id=?",request.styleId());filter.add("l.id=?",request.lotId());
+        filter.addIds("l.style_id",request.styleIds());filter.addIds("l.id",request.lotIds());
         filter.add("st.id=?",request.stationId());filter.add("p.id=?",request.processId());
         return filter;
     }
@@ -319,7 +319,7 @@ public class ReportService {
                                                 OffsetDateTime end,OffsetDateTime snapshot){
         var request=prepared.request();var filter=new SqlFilter();
         filter.raw(prepared.lotPredicate());filter.raw(prepared.stationPredicate());
-        filter.add("l.style_id=?",request.styleId());filter.add("l.id=?",request.lotId());
+        filter.addIds("l.style_id",request.styleIds());filter.addIds("l.id",request.lotIds());
         filter.add("st.id=?",request.stationId());filter.add("sv.received_by=?",request.operatorId());
         filter.add("sv.status=?",request.status());
         String sql="""
@@ -369,7 +369,7 @@ public class ReportService {
         var request=prepared.request();var filter=new SqlFilter();
         filter.add("so.stored_at>=? and so.stored_at<?",start,end);
         filter.raw(prepared.lotPredicate());filter.raw(prepared.stationPredicate());
-        filter.add("l.style_id=?",request.styleId());filter.add("l.id=?",request.lotId());
+        filter.addIds("l.style_id",request.styleIds());filter.addIds("l.id",request.lotIds());
         filter.add("st.id=?",request.stationId());filter.add("so.stored_by=?",request.operatorId());
         String status=request.status();
         String sql="""
@@ -405,7 +405,7 @@ public class ReportService {
                                                OffsetDateTime end,OffsetDateTime snapshot){
         var request=prepared.request();var filter=new SqlFilter();
         filter.add("a.linked_at>=? and a.linked_at<?",start,end);filter.raw(prepared.lotPredicate());
-        filter.add("l.style_id=?",request.styleId());filter.add("l.id=?",request.lotId());
+        filter.addIds("l.style_id",request.styleIds());filter.addIds("l.id",request.lotIds());
         String status=request.status();
         String base="""
             with params as (select ?::timestamptz snapshot_at), report_rows as (
@@ -472,7 +472,7 @@ public class ReportService {
 
     private List<ReportModels.Section> daily(ReportModels.Prepared prepared){
         var request=prepared.request();var filter=new SqlFilter();
-        filter.raw(prepared.lotPredicate());filter.add("l.style_id=?",request.styleId());filter.add("l.id=?",request.lotId());
+        filter.raw(prepared.lotPredicate());filter.addIds("l.style_id",request.styleIds());filter.addIds("l.id",request.lotIds());
         filter.add("l.status=?",request.status());
         filter.add("exists(select 1 from station_visits fsv where fsv.lot_id=l.id and fsv.station_id=?)",request.stationId());
         filter.add("exists(select 1 from station_visits fsv join process_executions fpe on fpe.station_visit_id=fsv.id where fsv.lot_id=l.id and fpe.process_id=?)",request.processId());
@@ -554,6 +554,11 @@ public class ReportService {
         void add(String clause,Object value){if(value!=null){clauses.add("("+clause+")");args.add(value);}}
         void add(String clause,Object first,Object second){
             if(first!=null&&second!=null){clauses.add("("+clause+")");args.add(first);args.add(second);}
+        }
+        void addIds(String column,List<UUID> values){
+            if(values==null||values.isEmpty())return;
+            clauses.add("("+column+" in ("+String.join(",",Collections.nCopies(values.size(),"?"))+"))");
+            args.addAll(values);
         }
         String sql(){return clauses.isEmpty()?"true":String.join(" and ",clauses);}
         List<Object> args(){return List.copyOf(args);}

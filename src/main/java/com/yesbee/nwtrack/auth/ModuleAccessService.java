@@ -27,6 +27,18 @@ public class ModuleAccessService {
         if("PC".equals(access.clientType())&&lotManagementPath(path)){
             requireAny("lots");return;
         }
+        if("PAD".equals(access.clientType())&&"STYLE_CONFIGURATOR".equals(access.role())){
+            boolean read=method.equals("GET");
+            boolean allowed=
+                (read&&path.matches("/api/v1/styles(?:/[^/]+)?"))
+                ||(read&&path.matches("/api/v1/styles/[^/]+/lots"))
+                ||(read&&path.matches("/api/v1/lots(?:/[^/]+)?"))
+                ||(read&&path.matches("/api/v1/trolleys(?:/available|/[^/]+)?"))
+                ||((method.equals("PUT")||method.equals("DELETE"))&&path.matches("/api/v1/lots/[^/]+/trolley"));
+            if(!allowed)throw new AccessDeniedException("This endpoint is outside the Style Configurator PAD workflow");
+            access.require(read?"READ":"CONFIGURE");
+            return;
+        }
         if("PC".equals(access.clientType())&&"STYLE_CONFIGURATOR".equals(access.role())
             &&method.equals("POST")&&path.matches("/api/v1/styles/[^/]+/release")){
             requireAny("newstyle");return; // The resource interceptor enforces style ownership.
@@ -34,6 +46,7 @@ public class ModuleAccessService {
 
         if(path.startsWith("/api/v1/styles")&&access.ownStylesOnly()
             &&!(method.equals("POST")&&path.equals("/api/v1/styles"))
+            &&!(method.equals("PUT")&&path.matches("/api/v1/styles/[^/]+"))
             &&!(method.equals("GET")&&(path.equals("/api/v1/styles")||path.matches("/api/v1/styles/[^/]+(/derived-route)?"))))
             throw new AccessDeniedException("New Style grants create and view own styles only");
         if(!"PC".equals(access.clientType())){access.require(ApiAccessConfiguration.permission(path,method));return;}
@@ -54,7 +67,9 @@ public class ModuleAccessService {
             boolean creator=access.role().equals("STYLE_CONFIGURATOR")||(!has("styles")&&has("newstyle"));
             if(creator){
                 requireAny("newstyle");
-                if(!(method.equals("POST")&&path.equals("/api/v1/styles"))&&!(method.equals("GET")&&(path.equals("/api/v1/styles")||path.matches("/api/v1/styles/[^/]+(/derived-route)?"))))
+                if(!(method.equals("POST")&&path.equals("/api/v1/styles"))
+                    &&!(method.equals("PUT")&&path.matches("/api/v1/styles/[^/]+"))
+                    &&!(method.equals("GET")&&(path.equals("/api/v1/styles")||path.matches("/api/v1/styles/[^/]+(/derived-route)?"))))
                     throw new AccessDeniedException("New Style grants create and view own styles only");
             }else requireAny("styles");
             return;

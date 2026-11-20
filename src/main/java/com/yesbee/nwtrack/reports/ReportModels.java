@@ -31,21 +31,21 @@ final class ReportModels {
 
     enum Type {
         STYLE_LOT("style-lot-production",
-            Set.of(Format.XLSX,Format.CSV,Format.PDF),Set.of("styleId","lotId","stationId","processId","status")),
+            Set.of(Format.XLSX,Format.CSV,Format.PDF),Set.of("styleIds","lotIds","stationId","processId","status")),
         STATION_TIME("station-processing-time",
-            Set.of(Format.XLSX,Format.CSV,Format.PDF),Set.of("styleId","lotId","stationId","processId","operatorId","status")),
+            Set.of(Format.XLSX,Format.CSV,Format.PDF),Set.of("styleIds","lotIds","stationId","processId","operatorId","status")),
         DELAY("delay-bottleneck",
-            Set.of(Format.XLSX,Format.CSV,Format.PDF),Set.of("styleId","lotId","stationId","processId","operatorId","status")),
+            Set.of(Format.XLSX,Format.CSV,Format.PDF),Set.of("styleIds","lotIds","stationId","processId","operatorId","status")),
         MOVEMENT("lot-movement-traceability",
-            Set.of(Format.XLSX,Format.CSV,Format.PDF),Set.of("styleId","lotId","stationId","operatorId","status")),
+            Set.of(Format.XLSX,Format.CSV,Format.PDF),Set.of("styleIds","lotIds","stationId","operatorId","status")),
         STORAGE("storage-waiting-time",
-            Set.of(Format.XLSX,Format.CSV,Format.PDF),Set.of("styleId","lotId","stationId","operatorId","status")),
+            Set.of(Format.XLSX,Format.CSV,Format.PDF),Set.of("styleIds","lotIds","stationId","operatorId","status")),
         TROLLEY("trolley-utilization",
-            Set.of(Format.XLSX,Format.CSV,Format.PDF),Set.of("styleId","lotId","status")),
+            Set.of(Format.XLSX,Format.CSV,Format.PDF),Set.of("styleIds","lotIds","status")),
         OPERATOR("operator-activity",
-            Set.of(Format.XLSX,Format.CSV,Format.PDF),Set.of("styleId","lotId","stationId","processId","operatorId","status")),
+            Set.of(Format.XLSX,Format.CSV,Format.PDF),Set.of("styleIds","lotIds","stationId","processId","operatorId","status")),
         DAILY("daily-production-summary",
-            Set.of(Format.XLSX,Format.PDF),Set.of("styleId","lotId","stationId","processId","status"));
+            Set.of(Format.XLSX,Format.PDF),Set.of("styleIds","lotIds","stationId","processId","status"));
 
         final String key;
         final Set<Format> formats;
@@ -59,7 +59,7 @@ final class ReportModels {
         }
     }
 
-    record Request(Type type,Format format,LocalDate from,LocalDate to,UUID styleId,UUID lotId,
+    record Request(Type type,Format format,LocalDate from,LocalDate to,List<UUID> styleIds,List<UUID> lotIds,
                    UUID stationId,UUID processId,UUID operatorId,String status){
         Request {
             Objects.requireNonNull(type);Objects.requireNonNull(format);
@@ -69,13 +69,22 @@ final class ReportModels {
                 throw new IllegalArgumentException(type.key+" does not support "+format.name().toLowerCase(Locale.ROOT));
             status=status==null?null:status.trim().toUpperCase(Locale.ROOT);
             if(status!=null&&status.isEmpty())status=null;
-            validateFilter(type,"styleId",styleId);validateFilter(type,"lotId",lotId);
+            styleIds=ids("styleIds",styleIds);lotIds=ids("lotIds",lotIds);
+            validateFilter(type,"styleIds",styleIds.isEmpty()?null:styleIds);
+            validateFilter(type,"lotIds",lotIds.isEmpty()?null:lotIds);
             validateFilter(type,"stationId",stationId);validateFilter(type,"processId",processId);
             validateFilter(type,"operatorId",operatorId);validateFilter(type,"status",status);
         }
         private static void validateFilter(Type type,String name,Object value){
             if(value!=null&&!type.filters.contains(name))
                 throw new IllegalArgumentException(name+" is not supported by report "+type.key);
+        }
+        private static List<UUID> ids(String name,List<UUID> values){
+            if(values==null||values.isEmpty())return List.of();
+            if(values.stream().anyMatch(Objects::isNull))throw new IllegalArgumentException(name+" cannot contain null");
+            if(new java.util.HashSet<>(values).size()!=values.size())throw new IllegalArgumentException(name+" cannot contain duplicates");
+            if(values.size()>100)throw new IllegalArgumentException(name+" cannot contain more than 100 values");
+            return List.copyOf(values);
         }
     }
 

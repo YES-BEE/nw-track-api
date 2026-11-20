@@ -1628,6 +1628,44 @@
                                                   }
                                   },
                                   {
+                                      "name":  "PUT /api/v1/styles/{id}",
+                                      "request":  {
+                                                      "method":  "PUT",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     },
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{baseUrl}}/api/v1/styles/{{styleId}}",
+                                                                  "host":  [
+                                                                               "{{baseUrl}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "api",
+                                                                               "v1",
+                                                                               "styles",
+                                                                               "{{styleId}}"
+                                                                           ]
+                                                              },
+                                                      "description":  "Update the description, ordered process route, planned lot count, and planned quantity while the style is still in draft.",
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\r\n    \"description\": \"Updated draft style\",\r\n    \"processIds\": [\"{{processId}}\", \"{{qualityProcessId}}\"],\r\n    \"lotCount\": 10,\r\n    \"quantity\": 25\r\n}",
+                                                                   "options":  {
+                                                                                   "raw":  {
+                                                                                               "language":  "json"
+                                                                                           }
+                                                                               }
+                                                               }
+                                                  }
+                                  },
+                                  {
                                       "name":  "PUT /api/v1/styles/{id}/processes",
                                       "request":  {
                                                       "method":  "PUT",
@@ -3814,12 +3852,16 @@
                                                   }
                                   },
                                   {
-                                      "name":  "GET /api/v1/dashboard/lots",
+                                      "name":  "POST /api/v1/dashboard/lots",
                                       "request":  {
-                                                      "method":  "GET",
+                                                      "method":  "POST",
                                                       "header":  [
                                                                      {
                                                                          "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     },
+                                                                     {
+                                                                         "key":  "Content-Type",
                                                                          "value":  "application/json"
                                                                      }
                                                                  ],
@@ -3835,7 +3877,16 @@
                                                                                "lots"
                                                                            ]
                                                               },
-                                                      "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history."
+                                                      "description":  "Lists production lots using multi-select style and lot filters. Empty arrays mean no filter; styleIds and lotIds are combined by intersection.",
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\r\n    \"styleIds\": [\"{{styleId}}\"],\r\n    \"lotIds\": [\"{{lotId}}\"],\r\n    \"routeScope\": \"CURRENT\",\r\n    \"page\": 0,\r\n    \"size\": 20\r\n}",
+                                                                   "options":  {
+                                                                                   "raw":  {
+                                                                                               "language":  "json"
+                                                                                           }
+                                                                               }
+                                                               }
                                                   }
                                   },
                                   {
@@ -3890,12 +3941,16 @@
                                                   }
                                   },
                                   {
-                                      "name":  "GET /api/v1/reports/lot-progress",
+                                      "name":  "POST /api/v1/reports/lot-progress",
                                       "request":  {
-                                                      "method":  "GET",
+                                                      "method":  "POST",
                                                       "header":  [
                                                                      {
                                                                          "key":  "Accept",
+                                                                         "value":  "application/json"
+                                                                     },
+                                                                     {
+                                                                         "key":  "Content-Type",
                                                                          "value":  "application/json"
                                                                      }
                                                                  ],
@@ -3911,7 +3966,16 @@
                                                                                "lot-progress"
                                                                            ]
                                                               },
-                                                      "description":  "Permission and station/process scope are enforced by the API. PC/PAD is selected at login. Destructive-looking Delete requests deactivate/unassign and preserve history."
+                                                      "description":  "Lists lot progress using multi-select style and lot filters.",
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\r\n    \"styleIds\": [\"{{styleId}}\"],\r\n    \"lotIds\": [\"{{lotId}}\"],\r\n    \"page\": 0,\r\n    \"size\": 20\r\n}",
+                                                                   "options":  {
+                                                                                   "raw":  {
+                                                                                               "language":  "json"
+                                                                                           }
+                                                                               }
+                                                               }
                                                   }
                                   },
                                   {
@@ -3940,17 +4004,21 @@
                                                   }
                                   },
                                   {
-                                      "name":  "GET /api/v1/reports/{reportId}/export",
+                                      "name":  "POST /api/v1/reports/{reportId}/export",
                                       "request":  {
-                                                      "method":  "GET",
+                                                      "method":  "POST",
                                                       "header":  [
                                                                      {
                                                                          "key":  "Accept",
                                                                          "value":  "application/octet-stream"
+                                                                     },
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
                                                                      }
                                                                  ],
                                                       "url":  {
-                                                                  "raw":  "{{baseUrl}}/api/v1/reports/{{reportId}}/export?format=xlsx\u0026from=2026-10-01\u0026to=2026-10-31",
+                                                                  "raw":  "{{baseUrl}}/api/v1/reports/{{reportId}}/export",
                                                                   "host":  [
                                                                                "{{baseUrl}}"
                                                                            ],
@@ -3960,23 +4028,18 @@
                                                                                "reports",
                                                                                "{{reportId}}",
                                                                                "export"
-                                                                           ],
-                                                                  "query":  [
-                                                                                {
-                                                                                    "key":  "format",
-                                                                                    "value":  "xlsx"
-                                                                                },
-                                                                                {
-                                                                                    "key":  "from",
-                                                                                    "value":  "2026-10-01"
-                                                                                },
-                                                                                {
-                                                                                    "key":  "to",
-                                                                                    "value":  "2026-10-31"
-                                                                                }
                                                                             ]
                                                               },
-                                                      "description":  "Streams one report file using the category UUID returned by GET /api/v1/reports/catalog. from and to are required inclusive factory-local dates."
+                                                      "description":  "Streams one report file using the category UUID returned by GET /api/v1/reports/catalog. from and to are required inclusive factory-local dates.",
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\r\n    \"format\": \"xlsx\",\r\n    \"from\": \"2026-10-01\",\r\n    \"to\": \"2026-10-31\",\r\n    \"styleIds\": [\"{{styleId}}\"],\r\n    \"lotIds\": [\"{{lotId}}\"]\r\n}",
+                                                                   "options":  {
+                                                                                   "raw":  {
+                                                                                               "language":  "json"
+                                                                                           }
+                                                                               }
+                                                               }
                                                   }
                                   },
                                   {
@@ -4770,524 +4833,316 @@
     "name":  "22 Dashboard and report filter options",
     "item":  [
                  {
-                     "name":  "GET /api/v1/dashboard/filter-options/lots",
-                     "request":  {
-                                     "method":  "GET",
-                                     "header":  [
-                                                    {
-                                                        "key":  "Accept",
-                                                        "value":  "application/json"
-                                                    }
-                                                ],
-                                     "url":  {
-                                                 "raw":  "{{baseUrl}}/api/v1/dashboard/filter-options/lots?page=0\u0026size=20\u0026routeScope=CURRENT",
-                                                 "host":  [
-                                                              "{{baseUrl}}"
-                                                          ],
-                                                 "path":  [
-                                                              "api",
-                                                              "v1",
-                                                              "dashboard",
-                                                              "filter-options",
-                                                              "lots"
-                                                          ],
-                                                 "query":  [
-                                                               {
-                                                                   "key":  "page",
-                                                                   "value":  "0"
-                                                               },
-                                                               {
-                                                                   "key":  "size",
-                                                                   "value":  "20"
-                                                               },
-                                                               {
-                                                                   "key":  "routeScope",
-                                                                   "value":  "CURRENT"
-                                                               },
-                                                               {
-                                                                   "key":  "search",
-                                                                   "value":  "",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "styleId",
-                                                                   "value":  "{{styleId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "lotId",
-                                                                   "value":  "{{lotId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "stationId",
-                                                                   "value":  "{{stationId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "processId",
-                                                                   "value":  "{{processId}}",
-                                                                   "disabled":  true
-                                                               }
-                                                           ]
-                                             },
-                                     "description":  "Searchable, paginated lots options from visible lots. Requires dashboard access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                     "name": "POST /api/v1/dashboard/filter-options/lots",
+                     "request": {
+                         "method": "POST",
+                         "header": [
+                             {
+                                 "key": "Accept",
+                                 "value": "application/json"
+                             },
+                             {
+                                 "key": "Content-Type",
+                                 "value": "application/json"
+                             }
+                         ],
+                         "url": {
+                             "raw": "{{baseUrl}}/api/v1/dashboard/filter-options/lots",
+                             "host": [
+                                 "{{baseUrl}}"
+                             ],
+                             "path": [
+                                 "api",
+                                 "v1",
+                                 "dashboard",
+                                 "filter-options",
+                                 "lots"
+                             ]
+                         },
+                         "description": "Returns scoped filter options using multi-select style and lot filters from the JSON request body.",
+                         "body": {
+                             "mode": "raw",
+                             "raw": "{\r\n    \"styleIds\": [\"{{styleId}}\"],\r\n    \"lotIds\": [\"{{lotId}}\"],\r\n    \"routeScope\": \"ANY\",\r\n    \"page\": 0,\r\n    \"size\": 20\r\n}",
+                             "options": {
+                                 "raw": {
+                                     "language": "json"
                                  }
+                             }
+                         }
+                     }
                  },
                  {
-                     "name":  "GET /api/v1/dashboard/filter-options/styles",
-                     "request":  {
-                                     "method":  "GET",
-                                     "header":  [
-                                                    {
-                                                        "key":  "Accept",
-                                                        "value":  "application/json"
-                                                    }
-                                                ],
-                                     "url":  {
-                                                 "raw":  "{{baseUrl}}/api/v1/dashboard/filter-options/styles?page=0\u0026size=20\u0026routeScope=CURRENT",
-                                                 "host":  [
-                                                              "{{baseUrl}}"
-                                                          ],
-                                                 "path":  [
-                                                              "api",
-                                                              "v1",
-                                                              "dashboard",
-                                                              "filter-options",
-                                                              "styles"
-                                                          ],
-                                                 "query":  [
-                                                               {
-                                                                   "key":  "page",
-                                                                   "value":  "0"
-                                                               },
-                                                               {
-                                                                   "key":  "size",
-                                                                   "value":  "20"
-                                                               },
-                                                               {
-                                                                   "key":  "routeScope",
-                                                                   "value":  "CURRENT"
-                                                               },
-                                                               {
-                                                                   "key":  "search",
-                                                                   "value":  "",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "styleId",
-                                                                   "value":  "{{styleId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "lotId",
-                                                                   "value":  "{{lotId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "stationId",
-                                                                   "value":  "{{stationId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "processId",
-                                                                   "value":  "{{processId}}",
-                                                                   "disabled":  true
-                                                               }
-                                                           ]
-                                             },
-                                     "description":  "Searchable, paginated styles options from visible lots. Requires dashboard access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                     "name": "POST /api/v1/dashboard/filter-options/styles",
+                     "request": {
+                         "method": "POST",
+                         "header": [
+                             {
+                                 "key": "Accept",
+                                 "value": "application/json"
+                             },
+                             {
+                                 "key": "Content-Type",
+                                 "value": "application/json"
+                             }
+                         ],
+                         "url": {
+                             "raw": "{{baseUrl}}/api/v1/dashboard/filter-options/styles",
+                             "host": [
+                                 "{{baseUrl}}"
+                             ],
+                             "path": [
+                                 "api",
+                                 "v1",
+                                 "dashboard",
+                                 "filter-options",
+                                 "styles"
+                             ]
+                         },
+                         "description": "Returns scoped filter options using multi-select style and lot filters from the JSON request body.",
+                         "body": {
+                             "mode": "raw",
+                             "raw": "{\r\n    \"styleIds\": [\"{{styleId}}\"],\r\n    \"lotIds\": [\"{{lotId}}\"],\r\n    \"routeScope\": \"ANY\",\r\n    \"page\": 0,\r\n    \"size\": 20\r\n}",
+                             "options": {
+                                 "raw": {
+                                     "language": "json"
                                  }
+                             }
+                         }
+                     }
                  },
                  {
-                     "name":  "GET /api/v1/dashboard/filter-options/stations",
-                     "request":  {
-                                     "method":  "GET",
-                                     "header":  [
-                                                    {
-                                                        "key":  "Accept",
-                                                        "value":  "application/json"
-                                                    }
-                                                ],
-                                     "url":  {
-                                                 "raw":  "{{baseUrl}}/api/v1/dashboard/filter-options/stations?page=0\u0026size=20\u0026routeScope=CURRENT",
-                                                 "host":  [
-                                                              "{{baseUrl}}"
-                                                          ],
-                                                 "path":  [
-                                                              "api",
-                                                              "v1",
-                                                              "dashboard",
-                                                              "filter-options",
-                                                              "stations"
-                                                          ],
-                                                 "query":  [
-                                                               {
-                                                                   "key":  "page",
-                                                                   "value":  "0"
-                                                               },
-                                                               {
-                                                                   "key":  "size",
-                                                                   "value":  "20"
-                                                               },
-                                                               {
-                                                                   "key":  "routeScope",
-                                                                   "value":  "CURRENT"
-                                                               },
-                                                               {
-                                                                   "key":  "search",
-                                                                   "value":  "",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "styleId",
-                                                                   "value":  "{{styleId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "lotId",
-                                                                   "value":  "{{lotId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "stationId",
-                                                                   "value":  "{{stationId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "processId",
-                                                                   "value":  "{{processId}}",
-                                                                   "disabled":  true
-                                                               }
-                                                           ]
-                                             },
-                                     "description":  "Searchable, paginated stations options from visible lots. Requires dashboard access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                     "name": "POST /api/v1/dashboard/filter-options/stations",
+                     "request": {
+                         "method": "POST",
+                         "header": [
+                             {
+                                 "key": "Accept",
+                                 "value": "application/json"
+                             },
+                             {
+                                 "key": "Content-Type",
+                                 "value": "application/json"
+                             }
+                         ],
+                         "url": {
+                             "raw": "{{baseUrl}}/api/v1/dashboard/filter-options/stations",
+                             "host": [
+                                 "{{baseUrl}}"
+                             ],
+                             "path": [
+                                 "api",
+                                 "v1",
+                                 "dashboard",
+                                 "filter-options",
+                                 "stations"
+                             ]
+                         },
+                         "description": "Returns scoped filter options using multi-select style and lot filters from the JSON request body.",
+                         "body": {
+                             "mode": "raw",
+                             "raw": "{\r\n    \"styleIds\": [\"{{styleId}}\"],\r\n    \"lotIds\": [\"{{lotId}}\"],\r\n    \"routeScope\": \"ANY\",\r\n    \"page\": 0,\r\n    \"size\": 20\r\n}",
+                             "options": {
+                                 "raw": {
+                                     "language": "json"
                                  }
+                             }
+                         }
+                     }
                  },
                  {
-                     "name":  "GET /api/v1/dashboard/filter-options/processes",
-                     "request":  {
-                                     "method":  "GET",
-                                     "header":  [
-                                                    {
-                                                        "key":  "Accept",
-                                                        "value":  "application/json"
-                                                    }
-                                                ],
-                                     "url":  {
-                                                 "raw":  "{{baseUrl}}/api/v1/dashboard/filter-options/processes?page=0\u0026size=20\u0026routeScope=CURRENT",
-                                                 "host":  [
-                                                              "{{baseUrl}}"
-                                                          ],
-                                                 "path":  [
-                                                              "api",
-                                                              "v1",
-                                                              "dashboard",
-                                                              "filter-options",
-                                                              "processes"
-                                                          ],
-                                                 "query":  [
-                                                               {
-                                                                   "key":  "page",
-                                                                   "value":  "0"
-                                                               },
-                                                               {
-                                                                   "key":  "size",
-                                                                   "value":  "20"
-                                                               },
-                                                               {
-                                                                   "key":  "routeScope",
-                                                                   "value":  "CURRENT"
-                                                               },
-                                                               {
-                                                                   "key":  "search",
-                                                                   "value":  "",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "styleId",
-                                                                   "value":  "{{styleId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "lotId",
-                                                                   "value":  "{{lotId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "stationId",
-                                                                   "value":  "{{stationId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "processId",
-                                                                   "value":  "{{processId}}",
-                                                                   "disabled":  true
-                                                               }
-                                                           ]
-                                             },
-                                     "description":  "Searchable, paginated processes options from visible lots. Requires dashboard access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                     "name": "POST /api/v1/dashboard/filter-options/processes",
+                     "request": {
+                         "method": "POST",
+                         "header": [
+                             {
+                                 "key": "Accept",
+                                 "value": "application/json"
+                             },
+                             {
+                                 "key": "Content-Type",
+                                 "value": "application/json"
+                             }
+                         ],
+                         "url": {
+                             "raw": "{{baseUrl}}/api/v1/dashboard/filter-options/processes",
+                             "host": [
+                                 "{{baseUrl}}"
+                             ],
+                             "path": [
+                                 "api",
+                                 "v1",
+                                 "dashboard",
+                                 "filter-options",
+                                 "processes"
+                             ]
+                         },
+                         "description": "Returns scoped filter options using multi-select style and lot filters from the JSON request body.",
+                         "body": {
+                             "mode": "raw",
+                             "raw": "{\r\n    \"styleIds\": [\"{{styleId}}\"],\r\n    \"lotIds\": [\"{{lotId}}\"],\r\n    \"routeScope\": \"ANY\",\r\n    \"page\": 0,\r\n    \"size\": 20\r\n}",
+                             "options": {
+                                 "raw": {
+                                     "language": "json"
                                  }
+                             }
+                         }
+                     }
                  },
                  {
-                     "name":  "GET /api/v1/reports/filter-options/lots",
-                     "request":  {
-                                     "method":  "GET",
-                                     "header":  [
-                                                    {
-                                                        "key":  "Accept",
-                                                        "value":  "application/json"
-                                                    }
-                                                ],
-                                     "url":  {
-                                                 "raw":  "{{baseUrl}}/api/v1/reports/filter-options/lots?page=0\u0026size=20\u0026routeScope=CURRENT",
-                                                 "host":  [
-                                                              "{{baseUrl}}"
-                                                          ],
-                                                 "path":  [
-                                                              "api",
-                                                              "v1",
-                                                              "reports",
-                                                              "filter-options",
-                                                              "lots"
-                                                          ],
-                                                 "query":  [
-                                                               {
-                                                                   "key":  "page",
-                                                                   "value":  "0"
-                                                               },
-                                                               {
-                                                                   "key":  "size",
-                                                                   "value":  "20"
-                                                               },
-                                                               {
-                                                                   "key":  "routeScope",
-                                                                   "value":  "CURRENT"
-                                                               },
-                                                               {
-                                                                   "key":  "search",
-                                                                   "value":  "",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "styleId",
-                                                                   "value":  "{{styleId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "lotId",
-                                                                   "value":  "{{lotId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "stationId",
-                                                                   "value":  "{{stationId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "processId",
-                                                                   "value":  "{{processId}}",
-                                                                   "disabled":  true
-                                                               }
-                                                           ]
-                                             },
-                                     "description":  "Searchable, paginated lots options from visible lots. Requires reports access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                     "name": "POST /api/v1/reports/filter-options/lots",
+                     "request": {
+                         "method": "POST",
+                         "header": [
+                             {
+                                 "key": "Accept",
+                                 "value": "application/json"
+                             },
+                             {
+                                 "key": "Content-Type",
+                                 "value": "application/json"
+                             }
+                         ],
+                         "url": {
+                             "raw": "{{baseUrl}}/api/v1/reports/filter-options/lots",
+                             "host": [
+                                 "{{baseUrl}}"
+                             ],
+                             "path": [
+                                 "api",
+                                 "v1",
+                                 "reports",
+                                 "filter-options",
+                                 "lots"
+                             ]
+                         },
+                         "description": "Returns scoped filter options using multi-select style and lot filters from the JSON request body.",
+                         "body": {
+                             "mode": "raw",
+                             "raw": "{\r\n    \"styleIds\": [\"{{styleId}}\"],\r\n    \"lotIds\": [\"{{lotId}}\"],\r\n    \"routeScope\": \"ANY\",\r\n    \"page\": 0,\r\n    \"size\": 20\r\n}",
+                             "options": {
+                                 "raw": {
+                                     "language": "json"
                                  }
+                             }
+                         }
+                     }
                  },
                  {
-                     "name":  "GET /api/v1/reports/filter-options/styles",
-                     "request":  {
-                                     "method":  "GET",
-                                     "header":  [
-                                                    {
-                                                        "key":  "Accept",
-                                                        "value":  "application/json"
-                                                    }
-                                                ],
-                                     "url":  {
-                                                 "raw":  "{{baseUrl}}/api/v1/reports/filter-options/styles?page=0\u0026size=20\u0026routeScope=CURRENT",
-                                                 "host":  [
-                                                              "{{baseUrl}}"
-                                                          ],
-                                                 "path":  [
-                                                              "api",
-                                                              "v1",
-                                                              "reports",
-                                                              "filter-options",
-                                                              "styles"
-                                                          ],
-                                                 "query":  [
-                                                               {
-                                                                   "key":  "page",
-                                                                   "value":  "0"
-                                                               },
-                                                               {
-                                                                   "key":  "size",
-                                                                   "value":  "20"
-                                                               },
-                                                               {
-                                                                   "key":  "routeScope",
-                                                                   "value":  "CURRENT"
-                                                               },
-                                                               {
-                                                                   "key":  "search",
-                                                                   "value":  "",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "styleId",
-                                                                   "value":  "{{styleId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "lotId",
-                                                                   "value":  "{{lotId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "stationId",
-                                                                   "value":  "{{stationId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "processId",
-                                                                   "value":  "{{processId}}",
-                                                                   "disabled":  true
-                                                               }
-                                                           ]
-                                             },
-                                     "description":  "Searchable, paginated styles options from visible lots. Requires reports access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                     "name": "POST /api/v1/reports/filter-options/styles",
+                     "request": {
+                         "method": "POST",
+                         "header": [
+                             {
+                                 "key": "Accept",
+                                 "value": "application/json"
+                             },
+                             {
+                                 "key": "Content-Type",
+                                 "value": "application/json"
+                             }
+                         ],
+                         "url": {
+                             "raw": "{{baseUrl}}/api/v1/reports/filter-options/styles",
+                             "host": [
+                                 "{{baseUrl}}"
+                             ],
+                             "path": [
+                                 "api",
+                                 "v1",
+                                 "reports",
+                                 "filter-options",
+                                 "styles"
+                             ]
+                         },
+                         "description": "Returns scoped filter options using multi-select style and lot filters from the JSON request body.",
+                         "body": {
+                             "mode": "raw",
+                             "raw": "{\r\n    \"styleIds\": [\"{{styleId}}\"],\r\n    \"lotIds\": [\"{{lotId}}\"],\r\n    \"routeScope\": \"ANY\",\r\n    \"page\": 0,\r\n    \"size\": 20\r\n}",
+                             "options": {
+                                 "raw": {
+                                     "language": "json"
                                  }
+                             }
+                         }
+                     }
                  },
                  {
-                     "name":  "GET /api/v1/reports/filter-options/stations",
-                     "request":  {
-                                     "method":  "GET",
-                                     "header":  [
-                                                    {
-                                                        "key":  "Accept",
-                                                        "value":  "application/json"
-                                                    }
-                                                ],
-                                     "url":  {
-                                                 "raw":  "{{baseUrl}}/api/v1/reports/filter-options/stations?page=0\u0026size=20\u0026routeScope=CURRENT",
-                                                 "host":  [
-                                                              "{{baseUrl}}"
-                                                          ],
-                                                 "path":  [
-                                                              "api",
-                                                              "v1",
-                                                              "reports",
-                                                              "filter-options",
-                                                              "stations"
-                                                          ],
-                                                 "query":  [
-                                                               {
-                                                                   "key":  "page",
-                                                                   "value":  "0"
-                                                               },
-                                                               {
-                                                                   "key":  "size",
-                                                                   "value":  "20"
-                                                               },
-                                                               {
-                                                                   "key":  "routeScope",
-                                                                   "value":  "CURRENT"
-                                                               },
-                                                               {
-                                                                   "key":  "search",
-                                                                   "value":  "",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "styleId",
-                                                                   "value":  "{{styleId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "lotId",
-                                                                   "value":  "{{lotId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "stationId",
-                                                                   "value":  "{{stationId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "processId",
-                                                                   "value":  "{{processId}}",
-                                                                   "disabled":  true
-                                                               }
-                                                           ]
-                                             },
-                                     "description":  "Searchable, paginated stations options from visible lots. Requires reports access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                     "name": "POST /api/v1/reports/filter-options/stations",
+                     "request": {
+                         "method": "POST",
+                         "header": [
+                             {
+                                 "key": "Accept",
+                                 "value": "application/json"
+                             },
+                             {
+                                 "key": "Content-Type",
+                                 "value": "application/json"
+                             }
+                         ],
+                         "url": {
+                             "raw": "{{baseUrl}}/api/v1/reports/filter-options/stations",
+                             "host": [
+                                 "{{baseUrl}}"
+                             ],
+                             "path": [
+                                 "api",
+                                 "v1",
+                                 "reports",
+                                 "filter-options",
+                                 "stations"
+                             ]
+                         },
+                         "description": "Returns scoped filter options using multi-select style and lot filters from the JSON request body.",
+                         "body": {
+                             "mode": "raw",
+                             "raw": "{\r\n    \"styleIds\": [\"{{styleId}}\"],\r\n    \"lotIds\": [\"{{lotId}}\"],\r\n    \"routeScope\": \"ANY\",\r\n    \"page\": 0,\r\n    \"size\": 20\r\n}",
+                             "options": {
+                                 "raw": {
+                                     "language": "json"
                                  }
+                             }
+                         }
+                     }
                  },
                  {
-                     "name":  "GET /api/v1/reports/filter-options/processes",
-                     "request":  {
-                                     "method":  "GET",
-                                     "header":  [
-                                                    {
-                                                        "key":  "Accept",
-                                                        "value":  "application/json"
-                                                    }
-                                                ],
-                                     "url":  {
-                                                 "raw":  "{{baseUrl}}/api/v1/reports/filter-options/processes?page=0\u0026size=20\u0026routeScope=CURRENT",
-                                                 "host":  [
-                                                              "{{baseUrl}}"
-                                                          ],
-                                                 "path":  [
-                                                              "api",
-                                                              "v1",
-                                                              "reports",
-                                                              "filter-options",
-                                                              "processes"
-                                                          ],
-                                                 "query":  [
-                                                               {
-                                                                   "key":  "page",
-                                                                   "value":  "0"
-                                                               },
-                                                               {
-                                                                   "key":  "size",
-                                                                   "value":  "20"
-                                                               },
-                                                               {
-                                                                   "key":  "routeScope",
-                                                                   "value":  "CURRENT"
-                                                               },
-                                                               {
-                                                                   "key":  "search",
-                                                                   "value":  "",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "styleId",
-                                                                   "value":  "{{styleId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "lotId",
-                                                                   "value":  "{{lotId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "stationId",
-                                                                   "value":  "{{stationId}}",
-                                                                   "disabled":  true
-                                                               },
-                                                               {
-                                                                   "key":  "processId",
-                                                                   "value":  "{{processId}}",
-                                                                   "disabled":  true
-                                                               }
-                                                           ]
-                                             },
-                                     "description":  "Searchable, paginated processes options from visible lots. Requires reports access. Combine lotId, styleId, stationId, processId and status; routeScope=CURRENT or ANY. The same filters apply to dashboard/lots, displays/lots and reports/lot-progress."
+                     "name": "POST /api/v1/reports/filter-options/processes",
+                     "request": {
+                         "method": "POST",
+                         "header": [
+                             {
+                                 "key": "Accept",
+                                 "value": "application/json"
+                             },
+                             {
+                                 "key": "Content-Type",
+                                 "value": "application/json"
+                             }
+                         ],
+                         "url": {
+                             "raw": "{{baseUrl}}/api/v1/reports/filter-options/processes",
+                             "host": [
+                                 "{{baseUrl}}"
+                             ],
+                             "path": [
+                                 "api",
+                                 "v1",
+                                 "reports",
+                                 "filter-options",
+                                 "processes"
+                             ]
+                         },
+                         "description": "Returns scoped filter options using multi-select style and lot filters from the JSON request body.",
+                         "body": {
+                             "mode": "raw",
+                             "raw": "{\r\n    \"styleIds\": [\"{{styleId}}\"],\r\n    \"lotIds\": [\"{{lotId}}\"],\r\n    \"routeScope\": \"ANY\",\r\n    \"page\": 0,\r\n    \"size\": 20\r\n}",
+                             "options": {
+                                 "raw": {
+                                     "language": "json"
                                  }
+                             }
+                         }
+                     }
                  }
              ]
 }

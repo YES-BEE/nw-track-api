@@ -25,7 +25,18 @@ public class ProductionController {
         validateProcesses(r.processIds());return style(service.createConfiguredStyle(r.styleNumber(),r.description(),actors.id(jwt),r.processIds(),r.lotCount(),r.quantity()));
     }
     @GetMapping("/styles") public ApiPage<Map<String,Object>> styles(){return Pages.query(jdbc,"select id,style_number,description,status,released_at,created_at,created_by,lot_count,lot_quantity,version from styles s where "+access.stylePredicate("s")+" order by created_at desc,id");}
-    @GetMapping("/styles/{id}") public Map<String,Object> style(@PathVariable UUID id){return jdbc.queryForMap("select id,style_number,description,status,released_at,created_at,created_by,lot_count,lot_quantity,version from styles where id=?",id);}
+    @GetMapping("/styles/{id}") public Map<String,Object> style(@PathVariable UUID id){return jdbc.queryForMap("""
+        select s.id,s.style_number,s.description,s.status,s.released_at,s.created_at,s.created_by,
+         s.lot_count,s.lot_quantity,s.version,
+         coalesce((select sum(l.quantity) from lots l where l.style_id=s.id),0)::bigint total_quantity
+        from styles s where s.id=?
+        """,id);}
+    @PutMapping("/styles/{id}") @PreAuthorize("isAuthenticated()")
+    public Map<String,Object> updateDraft(@PathVariable UUID id,@Valid @RequestBody DraftStyleCommand r){
+        validateProcesses(r.processIds());
+        service.updateDraft(id,r.description(),r.processIds(),r.lotCount(),r.quantity());
+        return style(id);
+    }
     @PutMapping("/styles/{id}/processes") @PreAuthorize("isAuthenticated()") public List<RouteDerivationService.RouteEntry> processes(@PathVariable UUID id,@RequestBody @NotEmpty List<UUID> processIds){validateProcesses(processIds);service.setProcesses(id,processIds);return service.derive(id);}
     @GetMapping("/styles/{id}/derived-route") public List<RouteDerivationService.RouteEntry> route(@PathVariable UUID id){return service.derive(id);}
     @PostMapping("/styles/{id}/release") @PreAuthorize("isAuthenticated()") public Map<String,Object> release(@PathVariable UUID id){service.release(id);return style(id);}
@@ -52,5 +63,7 @@ public class ProductionController {
             if(!access.role().equals("STYLE_CONFIGURATOR"))access.readProcess(process);
         }
     }
-    public record StyleCommand(@NotBlank String styleNumber,String description,List<@NotNull UUID> processIds,@Min(0) @Max(1000) Integer lotCount,@Positive Integer quantity){} public record LotCommand(@Min(1) @Max(1000) Integer lotCount,@Positive Integer quantity){} public record ReasonCommand(@NotBlank String reason){} public record StyleRevisionCommand(String description,@NotEmpty List<UUID> processIds,@Positive Integer quantity,@NotBlank String reason){}
+    public record StyleCommand(@NotBlank String styleNumber,String description,List<@NotNull UUID> processIds,@Min(0) @Max(1000) Integer lotCount,@Positive Integer quantity){}
+    public record DraftStyleCommand(@Size(max=500) String description,@NotEmpty List<@NotNull UUID> processIds,@NotNull @Min(0) @Max(1000) Integer lotCount,@Positive Integer quantity){}
+    public record LotCommand(@Min(1) @Max(1000) Integer lotCount,@Positive Integer quantity){} public record ReasonCommand(@NotBlank String reason){} public record StyleRevisionCommand(String description,@NotEmpty List<UUID> processIds,@Positive Integer quantity,@NotBlank String reason){}
 }

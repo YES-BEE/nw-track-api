@@ -27,8 +27,8 @@ class ReportHistoryService {
         ReportModels.Request request=prepared.request();
         UUID id=UUID.randomUUID();
         Map<String,Object> filters=new LinkedHashMap<>();
-        if(request.styleId()!=null)filters.put("styleId",request.styleId());
-        if(request.lotId()!=null)filters.put("lotId",request.lotId());
+        if(!request.styleIds().isEmpty())filters.put("styleIds",request.styleIds());
+        if(!request.lotIds().isEmpty())filters.put("lotIds",request.lotIds());
         if(request.stationId()!=null)filters.put("stationId",request.stationId());
         if(request.processId()!=null)filters.put("processId",request.processId());
         if(request.operatorId()!=null)filters.put("operatorId",request.operatorId());
