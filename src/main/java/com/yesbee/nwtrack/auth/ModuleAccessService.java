@@ -29,6 +29,11 @@ public class ModuleAccessService {
         }
         if("PAD".equals(access.clientType())&&"STYLE_CONFIGURATOR".equals(access.role())){
             boolean read=method.equals("GET");
+            if ((read && Set.of("/api/v1/auth/me", "/api/v1/auth/sessions").contains(path))
+                || (method.equals("POST") && Set.of("/api/v1/auth/change-password", "/api/v1/auth/refresh-tokens", "/api/v1/auth/logout").contains(path))
+                || (method.equals("DELETE") && path.matches("/api/v1/auth/sessions/[^/]+"))) {
+                return;
+            }
             boolean allowed=
                 (read&&path.matches("/api/v1/styles(?:/[^/]+)?"))
                 ||(read&&path.matches("/api/v1/styles/[^/]+/lots"))

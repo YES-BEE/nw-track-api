@@ -12,11 +12,12 @@ class ModuleAccessServiceTest {
     @Test void pendingInitialPasswordAllowsPasswordSetupButBlocksApplicationData(){
         var jdbc=mock(JdbcTemplate.class);var access=mock(AccessPolicy.class);
         UUID actor=UUID.randomUUID();when(access.actor()).thenReturn(actor);
-        when(access.clientType()).thenReturn("PC");
+        when(access.clientType()).thenReturn("PAD");when(access.role()).thenReturn("STYLE_CONFIGURATOR");
         when(jdbc.queryForObject("select count(*) from users where id=? and initial_password_expires_at is not null",Integer.class,actor)).thenReturn(1);
         var modules=new ModuleAccessService(jdbc,access);
         modules.authorize("/api/v1/auth/me","GET");
         modules.authorize("/api/v1/auth/change-password","POST");
+        modules.authorize("/api/v1/auth/logout","POST");
         assertThatThrownBy(()->modules.authorize("/api/v1/lots","GET")).isInstanceOf(AccessDeniedException.class).hasMessageContaining("initial password");
         assertThatThrownBy(()->modules.authorize("/api/v1/auth/refresh-tokens","POST")).isInstanceOf(AccessDeniedException.class);
     }
@@ -52,6 +53,14 @@ class ModuleAccessServiceTest {
         when(jdbc.queryForObject("select count(*) from users where id=? and initial_password_expires_at is not null",Integer.class,actor)).thenReturn(0);
         when(access.clientType()).thenReturn("PAD");when(access.role()).thenReturn("STYLE_CONFIGURATOR");
         var modules=new ModuleAccessService(jdbc,access);String id=UUID.randomUUID().toString();
+        modules.authorize("/api/v1/auth/me","GET");
+        modules.authorize("/api/v1/auth/change-password","POST");
+        modules.authorize("/api/v1/auth/refresh-tokens","POST");
+        modules.authorize("/api/v1/auth/logout","POST");
+        modules.authorize("/api/v1/auth/sessions","GET");
+        modules.authorize("/api/v1/auth/sessions/"+id,"DELETE");
+        assertThatThrownBy(()->modules.authorize("/api/v1/auth/other","GET")).isInstanceOf(AccessDeniedException.class);
+        assertThatThrownBy(()->modules.authorize("/api/v1/sync/bootstrap","GET")).isInstanceOf(AccessDeniedException.class);
         for(String path:List.of("/api/v1/styles","/api/v1/styles/"+id,"/api/v1/styles/"+id+"/lots",
             "/api/v1/lots","/api/v1/lots/"+id,"/api/v1/trolleys","/api/v1/trolleys/available","/api/v1/trolleys/"+id))
             modules.authorize(path,"GET");
