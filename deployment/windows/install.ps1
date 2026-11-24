@@ -3,12 +3,14 @@ param(
     [string]$Action = "start",
     [string]$BindAddress,
     [string]$AllowedSubnet,
+    [string]$ExternalAllowedIps,
     [switch]$EnableHttps,
     [ValidateRange(1,720)][int]$SinceHours = 24,
     [string]$BackupDirectory
 )
 
 $ErrorActionPreference = "Stop"
+$externalIpsSpecified = $PSBoundParameters.ContainsKey('ExternalAllowedIps')
 $projectDirectory = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $environmentFile = Join-Path $projectDirectory ".env"
 $runtimeDirectory = Join-Path $projectDirectory "deployment\runtime"
@@ -26,6 +28,7 @@ function Invoke-Elevated {
     $arguments = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-NoExit", "-File", ('"' + $PSCommandPath + '"'), "-Action", $Action)
     if ($BindAddress) { $arguments += @("-BindAddress", $BindAddress) }
     if ($AllowedSubnet) { $arguments += @("-AllowedSubnet", $AllowedSubnet) }
+    if ($externalIpsSpecified) { $arguments += @('-ExternalAllowedIps', ('"' + $ExternalAllowedIps + '"')) }
     if ($EnableHttps) { $arguments += "-EnableHttps" }
     $process = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList ($arguments -join ' ')
     exit $process.ExitCode
@@ -151,11 +154,21 @@ function Configure-Network {
     $ip = if ($BindAddress) { $BindAddress } else { $wifi.Address.IPAddress }
     if ($EnableHttps) { Reserve-DnsPort $ip }
     $subnet = if ($AllowedSubnet) { $AllowedSubnet } else { Get-NetworkCidr $ip $wifi.Address.PrefixLength }
+    $external = if ($externalIpsSpecified) { $ExternalAllowedIps } else { Get-EnvironmentValue 'EXTERNAL_ALLOWED_IPS' }
+    $externalAddresses = @()
+    if ($external) {
+        foreach ($item in ($external -split ',')) {
+            $address = $null
+            if (-not [Net.IPAddress]::TryParse($item.Trim(), [ref]$address) -or $address.AddressFamily -ne [Net.Sockets.AddressFamily]::InterNetwork -or $address.ToString() -eq '0.0.0.0') { throw "Invalid external IPv4 address: $item" }
+            $externalAddresses += $address.ToString()
+        }
+    }
     if ($ip -ne $wifi.Address.IPAddress) { Write-Warning "Configured address $ip differs from detected Wi-Fi address $($wifi.Address.IPAddress)." }
 
     Set-NetConnectionProfile -InterfaceIndex $wifi.Adapter.ifIndex -NetworkCategory Private
     Set-EnvironmentValue "BIND_ADDRESS" $ip
     Set-EnvironmentValue "ALLOWED_SUBNET" $subnet
+    Set-EnvironmentValue "EXTERNAL_ALLOWED_IPS" ($externalAddresses -join ',')
     Set-EnvironmentValue "APP_DOMAIN" $domain
     Set-EnvironmentValue "HTTPS_ENABLED" ($EnableHttps.IsPresent.ToString().ToLowerInvariant())
 
@@ -168,6 +181,14 @@ function Configure-Network {
     New-NetFirewallRule -DisplayName "NW Track - HTTP" -Description "Allow NW Track HTTP from the factory LAN" `
         -Direction Inbound -Action Allow -Protocol TCP -LocalPort 80 -LocalAddress $ip `
         -RemoteAddress $subnet -InterfaceAlias $wifi.Adapter.Name -Profile Private | Out-Null
+    if ($externalAddresses.Count -gt 0) {
+        $ports = if ($EnableHttps) { @(80,443) } else { @(80) }
+        foreach ($port in $ports) {
+            New-NetFirewallRule -DisplayName "NW Track - External TCP $port" -Description "Allow configured external source IPs" `
+                -Direction Inbound -Action Allow -Protocol TCP -LocalPort $port -LocalAddress $ip `
+                -RemoteAddress $externalAddresses -InterfaceAlias $wifi.Adapter.Name -Profile Private | Out-Null
+        }
+    }
     if ($EnableHttps) {
     foreach ($protocol in @("TCP","UDP")) {
         New-NetFirewallRule -DisplayName "NW Track - DNS $protocol" -Description "Resolve $domain on the factory LAN" `
@@ -184,7 +205,7 @@ function Configure-Network {
     Write-Host "Application URL: https://$domain" -ForegroundColor Cyan
     Write-Host "Configure the Wi-Fi router DHCP DNS address as: $ip" -ForegroundColor Yellow
     } else { Write-Host "Application URL: http://$ip" -ForegroundColor Cyan }
-    Write-Host "No router port forwarding is required or created." -ForegroundColor Yellow
+    Write-Host "External access requires VPN or router forwarding; this installer does not configure it." -ForegroundColor Yellow
 }
 
 function Install-FactoryCa {
