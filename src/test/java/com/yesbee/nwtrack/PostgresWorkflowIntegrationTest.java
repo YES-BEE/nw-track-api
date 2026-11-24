@@ -454,8 +454,21 @@ class PostgresWorkflowIntegrationTest {
         // Lot Management allows choosing and releasing a trolley without general configuration access.
         Reply trolley=call("POST","/api/v1/trolleys",java.util.Map.of("code","LM-T-"+suffix),admin);
         String trolleyId=trolley.body().get("id").asText();
+        String pad=login(owner,"PAD"),otherPad=login(other,"PAD"),uid="PAD-"+suffix;
+        jdbc.update("insert into nfc_tags(id,uid,name,asset_type,trolley_id,active) values (?,?,?,'TROLLEY',?::uuid,true)",UUID.randomUUID(),uid.toUpperCase(),uid,trolleyId);
+        assertThat(call("GET","/api/v1/styles",null,pad).body().get("totalElements").asInt()).isEqualTo(1);
+        assertThat(call("GET",styleLots,null,pad).body().get("totalElements").asInt()).isEqualTo(5);
+        assertThat(call("GET",styleLots,null,otherPad).status()).isEqualTo(403);
+        assertThat(call("POST","/api/v1/nfc/resolve",java.util.Map.of("uid",uid),pad).status()).isEqualTo(200);
+        assertThat(call("PUT",lotPath+"/trolley",java.util.Map.of("trolleyId",trolleyId),otherPad).status()).isEqualTo(403);
+        assertThat(call("PUT",lotPath+"/trolley",java.util.Map.of("trolleyId",trolleyId),pad).status()).isEqualTo(200);
+        assertThat(call("DELETE",lotPath+"/trolley",null,pad).status()).isEqualTo(200);
+        assertThat(call("POST",lotPath+"/trolley-link",java.util.Map.of("trolleyId",trolleyId),otherPad).status()).isEqualTo(403);
+        assertThat(call("POST",lotPath+"/trolley-link",java.util.Map.of("trolleyId",trolleyId),pad).status()).isEqualTo(200);
+        assertThat(call("DELETE",lotPath+"/trolley",null,pad).status()).isEqualTo(200);
+        assertThat(call("POST",lotPath+"/dispatch",null,pad).status()).isEqualTo(403);
         assertThat(call("GET","/api/v1/trolleys/available",null,creator).status()).isEqualTo(200);
-        assertThat(call("GET","/api/v1/trolleys",null,creator).status()).isEqualTo(403);
+        assertThat(call("GET","/api/v1/trolleys",null,creator).status()).isEqualTo(200);
         assertThat(call("PUT",lotPath+"/trolley",java.util.Map.of("trolleyId",trolleyId),outsider).status()).isEqualTo(403);
         Reply mapped=call("PUT",lotPath+"/trolley",java.util.Map.of("trolleyId",trolleyId),creator);
         assertThat(mapped.status()).as(mapped.body().toString()).isEqualTo(200);
@@ -663,10 +676,10 @@ class PostgresWorkflowIntegrationTest {
         org.flywaydb.core.Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).load().migrate();
         assertThat(upgradeJdbc.queryForObject("select role_id from user_roles where user_id=?",UUID.class,user)).isEqualTo(oldRole);
         assertThat(upgradeJdbc.queryForObject("select code from roles where id=?",String.class,oldRole)).isEqualTo("STYLE_CONFIGURATOR");
-        assertThat(upgradeJdbc.queryForList("select module_key from role_modules where role_id=?",String.class,oldRole)).containsExactlyInAnyOrder("newstyle","lots");
+        assertThat(upgradeJdbc.queryForList("select module_key from role_modules where role_id=?",String.class,oldRole)).containsExactlyInAnyOrder("newstyle","lots","trolleys");
         assertThat(upgradeJdbc.queryForObject("select initial_password_expires_at is null from users where id=?",Boolean.class,user)).isTrue();
         assertThat(upgradeJdbc.queryForList("select permission from role_permissions where role_id=?",String.class,oldRole)).containsExactly("READ");
-        assertThat(upgradeJdbc.queryForObject("select pad_access from roles where id=?",Boolean.class,oldRole)).isFalse();
+        assertThat(upgradeJdbc.queryForObject("select pad_access from roles where id=?",Boolean.class,oldRole)).isTrue();
         assertThat(upgradeJdbc.queryForObject("select pc_access from roles where code='SUPERVISOR'",Boolean.class)).isTrue();
         assertThat(upgradeJdbc.queryForObject("select count(*) from roles where built_in",Integer.class)).isEqualTo(7);
     }

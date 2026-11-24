@@ -1,4 +1,4 @@
-# v21 roles and module authorization — V6 contract
+# v21 roles and module authorization â€” V6 contract
 
 Implemented 7 November 2026. This supersedes the earlier fixed-role/module limitations in the v8 documentation. The backend now supports custom roles, independent desktop module grants and custom module placeholders. The click dummy remains a reference UI: its localStorage handlers must be replaced by these APIs using the [updated field/action handoff](UI_V21_API_INTEGRATION.md).
 
@@ -14,7 +14,7 @@ Implemented 7 November 2026. This supersedes the earlier fixed-role/module limit
 | Process Manager | PROCESS_MANAGER | none; login/me still work |
 | Style Configurator | STYLE_CONFIGURATOR | newstyle/lots; create, view and release own styles; manage own styles' lots |
 
-All seven can log in on PC by default, including Supervisor. Existing PAD action permissions/channels remain for the operational personas. Style Configurator has no PAD access by default. V6 renames the existing STATION_0 role **in place** to STYLE_CONFIGURATOR, preserving its user associations and historical IDs while removing its old operational permissions. Its refresh sessions are revoked; old role-bearing JWTs require login again. Station 0 locations/production history are not renamed or deleted.
+All seven can log in on PC by default, including Supervisor. Existing PAD action permissions/channels remain for the operational personas. Style Configurator can also log in on PAD to list its own styles and lots, scan trolley tags, and map or unmap trolleys on its own lots. V12 enables PAD and grants Trolley Configuration by default. V6 renames the existing STATION_0 role **in place** to STYLE_CONFIGURATOR, preserving its user associations and historical IDs while removing its old operational permissions. Its refresh sessions are revoked; old role-bearing JWTs require login again. Station 0 locations/production history are not renamed or deleted.
 
 Custom roles are scoped to assigned active processes/stations. A scoped configuration user can create a process only at an already authorized station; that new process is assigned back to its creator with activeOnShift false so it remains manageable without automatically granting operation access. They do not gain the global data scope of NW, IT Admin, Top Manager or Production Manager by choosing a similar name. Role/module names are case-insensitively unique, including retired records. Built-in roles cannot be deleted. A custom role cannot be deleted until every assigned user (including disabled users) is reassigned. Names/codes are immutable on edit, matching the dummy's read-only role name.
 
@@ -31,7 +31,7 @@ Login, refresh and `GET /api/v1/auth/me` now return `modules`:
 
 Use these keys directly for `nwShowConfig()`/sidebar visibility. Do **not** derive desktop navigation from old coarse `permissions`, role display names or local `roleDefs`. `permissions` still describes existing action/PAD permissions and is not a replacement for module grants. The server checks current grants on every HTTP request; changing grants applies to already-issued tokens without needing a fresh login. Changing a user's role requires login again. Role deactivation/channel disabling also blocks existing tokens.
 
-PC endpoints map independently: dashboard APIs → dashboard, reports/progress → reports, process/machine configuration → process, storage configuration → storage, NFC registry/assignments → tags, user administration → users, access-role/module administration → roles, style management → styles. New Style is a restricted create/view-own path, not general style editing. Unmapped operational endpoints keep their existing action/channel guards and are unavailable to non-admin PC sessions. PAD operation APIs retain their existing action permissions and assignment/shift checks.
+PC endpoints map independently: dashboard APIs â†’ dashboard, reports/progress â†’ reports, process/machine configuration â†’ process, storage configuration â†’ storage, NFC registry/assignments â†’ tags, user administration â†’ users, access-role/module administration â†’ roles, style management â†’ styles. New Style is a restricted create/view-own path, not general style editing. Unmapped operational endpoints keep their existing action/channel guards and are unavailable to non-admin PC sessions. PAD operation APIs retain their existing action permissions and assignment/shift checks.
 
 ## Roles APIs and click mapping
 
@@ -40,8 +40,8 @@ All management calls need the `roles` module on PC.
 | UI action | API |
 | --- | --- |
 | Open Role Management | GET /api/v1/access-roles and GET /api/v1/modules |
-| Create New Role → Save Role | POST /api/v1/access-roles |
-| Edit role → Save Role | PUT /api/v1/access-roles/{code} |
+| Create New Role â†’ Save Role | POST /api/v1/access-roles |
+| Edit role â†’ Save Role | PUT /api/v1/access-roles/{code} |
 | Delete custom role | DELETE /api/v1/access-roles/{code} |
 | Populate user role dropdown | GET /api/v1/access-roles/options; users or roles module suffices |
 | Legacy/PAD action permission catalog | GET /api/v1/access-roles/permissions |
@@ -62,11 +62,11 @@ Update:
 {"modules":["dashboard","storage","custom_example"]}
 ```
 
-PUT replaces the complete module list and returns the full active role list. Omitted `pcAccess`, `padAccess` and `permissions` are preserved on update. No unexposed PAD permissions are cleared by editing module boxes. READ is retained/added for session compatibility when updating only modules. If legacy clients send only `permissions`, broad module grants are derived for compatibility (CONFIGURE → process/storage/tags, REPORTS → dashboard/reports, STYLES → styles, USERS → users, ROLES → roles); new clients must send explicit `modules` for independent grants.
+PUT replaces the complete module list and returns the full active role list. Omitted `pcAccess`, `padAccess` and `permissions` are preserved on update. No unexposed PAD permissions are cleared by editing module boxes. READ is retained/added for session compatibility when updating only modules. If legacy clients send only `permissions`, broad module grants are derived for compatibility (CONFIGURE â†’ process/storage/tags, REPORTS â†’ dashboard/reports, STYLES â†’ styles, USERS â†’ users, ROLES â†’ roles); new clients must send explicit `modules` for independent grants.
 
 GET role record fields: `code`, `name`, `description`, `built_in`, `active`, `pc_access`, `pad_access`, `permissions`, `modules`. GET options returns only `{code,name}` records, so user administration does not need role-administration access. DELETE soft-deactivates an unassigned custom role and returns `{code,active:false}`.
 
-NW and IT Admin must retain PC access and users/roles modules. Their legacy action permission updates must also retain READ/USERS/ROLES. These protections prevent role-editor lockout. Built-in deletion → 409 BUILT_IN_ROLE; assigned custom deletion → 409 ROLE_IN_USE; invalid module or lockout edit → 400; duplicate name → 409 DATA_CONFLICT. Role/module management writes are audited.
+NW and IT Admin must retain PC access and users/roles modules. Their legacy action permission updates must also retain READ/USERS/ROLES. These protections prevent role-editor lockout. Built-in deletion â†’ 409 BUILT_IN_ROLE; assigned custom deletion â†’ 409 ROLE_IN_USE; invalid module or lockout edit â†’ 400; duplicate name â†’ 409 DATA_CONFLICT. Role/module management writes are audited.
 
 ## Add New Module
 
@@ -78,7 +78,7 @@ NW and IT Admin must retain PC access and users/roles modules. Their legacy acti
 4. GET modules reloads the shared catalog for future role editors. A new module grants no one access automatically.
 5. Assigned users receive it through `modules` at login/refresh/me. Render its sidebar label and call GET `/api/v1/modules/{key}/content` when opening it.
 
-Content response: `{key,name,status:"WORK_IN_PROGRESS",message:"Work in Progress"}`. Missing module grant → 403, even with a known key. This registers a navigation/permission placeholder, not executable code, routes or business APIs. Built-in content uses its actual APIs, not this placeholder endpoint. Module rename/delete is outside the current dummy and has no API.
+Content response: `{key,name,status:"WORK_IN_PROGRESS",message:"Work in Progress"}`. Missing module grant â†’ 403, even with a known key. This registers a navigation/permission placeholder, not executable code, routes or business APIs. Built-in content uses its actual APIs, not this placeholder endpoint. Module rename/delete is outside the current dummy and has no API.
 
 ## Form dependencies without extra screen access
 
