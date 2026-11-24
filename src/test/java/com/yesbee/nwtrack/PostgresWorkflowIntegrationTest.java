@@ -488,6 +488,37 @@ class PostgresWorkflowIntegrationTest {
         assertThat(call("POST",lotPath+"/dispatch",null,creator).status()).isEqualTo(403);
     }
 
+    @Test void styleConfiguratorPadManagesTagsForAllAssetTypes()throws Exception{
+        String admin=login("admin","PC"),suffix=UUID.randomUUID().toString(),user="tag-pad-"+suffix;
+        assertThat(call("POST","/api/v1/users",java.util.Map.of("username",user,"displayName",user,"initialPassword","ChangeMe123!","role","STYLE_CONFIGURATOR"),admin).status()).isEqualTo(200);
+        String pad=login(user,"PAD");
+        UUID station=UUID.randomUUID(),process=UUID.randomUUID(),deviceProcess=UUID.randomUUID(),machine=UUID.randomUUID(),area=UUID.randomUUID(),unit=UUID.randomUUID(),trolley=UUID.randomUUID();
+        jdbc.update("insert into stations(id,code,name) values (?,?,?)",station,"TP-S-"+suffix,"Station");
+        jdbc.update("insert into processes(id,code,name,station_id,nfc_mode) values (?,?,?,?, 'PROCESS'),(?,?,?,?, 'DEVICES')",process,"TP-P-"+suffix,"Process",station,deviceProcess,"TP-D-"+suffix,"Device process",station);
+        jdbc.update("insert into machines(id,station_id,process_id,name,machine_type) values (?,?,?,?,?)",machine,station,deviceProcess,"Device","GENERAL");
+        jdbc.update("insert into storage_areas(id,station_id,code,name) values (?,?,?,?)",area,station,"TP-A-"+suffix,"Area");
+        jdbc.update("insert into storage_locations(id,station_id,storage_area_id,code,name) values (?,?,?,?,?)",unit,station,area,"TP-U-"+suffix,"Unit");
+        jdbc.update("insert into trolleys(id,code) values (?,?)",trolley,"TP-T-"+suffix);
+        for(String path:List.of("/api/v1/stations","/api/v1/processes","/api/v1/machines","/api/v1/storage-areas","/api/v1/storage-units/"+unit,"/api/v1/storage-locations","/api/v1/trolleys"))
+            assertThat(call("GET",path,null,pad).status()).as(path).isEqualTo(200);
+        String uid=("TAG-"+suffix).toUpperCase();
+        Reply created=call("POST","/api/v1/nfc-tags",java.util.Map.of("uid",uid,"name","Scanned "+suffix),pad);
+        assertThat(created.status()).as(created.body().toString()).isEqualTo(200);
+        String tag=created.body().get("id").asText();
+        assertThat(call("GET","/api/v1/nfc-tags/"+tag,null,pad).status()).isEqualTo(200);
+        assertThat(call("PUT","/api/v1/nfc-tags/"+tag,java.util.Map.of("uid",uid,"name","Updated "+suffix),pad).status()).isEqualTo(200);
+        var targets=java.util.Map.of("TROLLEY",trolley,"STATION",station,"PROCESS",process,"MACHINE",machine,"STORAGE_AREA",area,"STORAGE_UNIT",unit);
+        for(var target:targets.entrySet()){
+            Reply assigned=call("PUT","/api/v1/nfc-assignments/"+tag,java.util.Map.of("assetType",target.getKey(),"assetId",target.getValue(),"reason","Scanned tag"),pad);
+            assertThat(assigned.status()).as(target.getKey()+" "+assigned.body()).isEqualTo(200);
+            assertThat(call("POST","/api/v1/nfc/resolve",java.util.Map.of("uid",uid),pad).status()).isEqualTo(200);
+        }
+        assertThat(call("GET","/api/v1/nfc-assignments/"+tag+"/history",null,pad).body().get("totalElements").asInt()).isEqualTo(6);
+        assertThat(call("DELETE","/api/v1/nfc-assignments/"+tag,java.util.Map.of("reason","Replace tag"),pad).status()).isEqualTo(200);
+        assertThat(call("DELETE","/api/v1/nfc-tags/"+tag,null,pad).status()).isEqualTo(200);
+        assertThat(call("POST","/api/v1/stations",java.util.Map.of("code","NO","name","No","stationType","PRODUCTION"),pad).status()).isEqualTo(403);
+    }
+
     @Test void lotQuantityEditingEnforcesOwnershipStagesAndAuditHistory()throws Exception{
         String admin=login("admin","PC"),suffix=UUID.randomUUID().toString();
         var tokens=new java.util.LinkedHashMap<String,String>();
@@ -676,7 +707,7 @@ class PostgresWorkflowIntegrationTest {
         org.flywaydb.core.Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).load().migrate();
         assertThat(upgradeJdbc.queryForObject("select role_id from user_roles where user_id=?",UUID.class,user)).isEqualTo(oldRole);
         assertThat(upgradeJdbc.queryForObject("select code from roles where id=?",String.class,oldRole)).isEqualTo("STYLE_CONFIGURATOR");
-        assertThat(upgradeJdbc.queryForList("select module_key from role_modules where role_id=?",String.class,oldRole)).containsExactlyInAnyOrder("newstyle","lots","trolleys");
+        assertThat(upgradeJdbc.queryForList("select module_key from role_modules where role_id=?",String.class,oldRole)).containsExactlyInAnyOrder("newstyle","lots","trolleys","tags");
         assertThat(upgradeJdbc.queryForObject("select initial_password_expires_at is null from users where id=?",Boolean.class,user)).isTrue();
         assertThat(upgradeJdbc.queryForList("select permission from role_permissions where role_id=?",String.class,oldRole)).containsExactly("READ");
         assertThat(upgradeJdbc.queryForObject("select pad_access from roles where id=?",Boolean.class,oldRole)).isTrue();

@@ -22,7 +22,8 @@ public class ApiAccessConfiguration implements WebMvcConfigurer {
                 String resource=parts[0].equals("displays")&&parts.length>1?parts[1]:parts[0];
                 if(parts.length>index) {
                     UUID id=null;try{id=UUID.fromString(parts[index]);}catch(IllegalArgumentException ignored){}
-                    if(id!=null) switch(resource) {
+                    boolean tagAssetRead="GET".equals(request.getMethod())&&access.padTagManager()&&Set.of("stations","processes","machines","storage-areas","storage-units","storage-locations").contains(resource);
+                    if(id!=null&&!tagAssetRead) switch(resource) {
                         case "stations" -> access.station(id);
                         case "processes" -> access.readProcess(id);
                         case "machines" -> access.readProcess(jdbc.queryForObject("select process_id from machines where id=?",UUID.class,id));

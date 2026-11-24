@@ -25,13 +25,17 @@ public class ModuleAccessService {
             &&jdbc.queryForObject("select count(*) from users where id=? and initial_password_expires_at is not null",Integer.class,access.actor())>0)
             throw new AccessDeniedException("Change the initial password before using the application");
         if("PAD".equals(access.clientType())&&"STYLE_CONFIGURATOR".equals(access.role())){
+            boolean tags=path.matches("/api/v1/nfc-tags(?:/[^/]+(?:/status)?)?")||path.matches("/api/v1/nfc-assignments(?:/[^/]+(?:/history)?)?");
+            boolean assets=method.equals("GET")&&(path.matches("/api/v1/(?:trolleys|stations|processes|machines|storage-areas|storage-units|storage-locations)(?:/[^/]+)?")||path.matches("/api/v1/storage-areas/[^/]+/units"));
+            if(tags||(assets&&!path.equals("/api/v1/trolleys/available"))){requireAny("tags");return;}
             boolean styles=method.equals("GET")&&(path.equals("/api/v1/styles")||path.matches("/api/v1/styles/[^/]+(?:/lots)?"));
             boolean lots=method.equals("GET")&&(path.equals("/api/v1/lots")||path.matches("/api/v1/lots/[^/]+"));
             boolean mapping=(Set.of("PUT","DELETE").contains(method)&&path.matches("/api/v1/lots/[^/]+/trolley"))
                 ||(method.equals("POST")&&path.matches("/api/v1/lots/[^/]+/trolley-link"));
             boolean scan=method.equals("POST")&&path.equals("/api/v1/nfc/resolve");
             boolean available=method.equals("GET")&&path.equals("/api/v1/trolleys/available");
-            if(styles||lots||mapping||scan||available){requireAny("lots");return;}
+            if(scan){requireAny("lots","tags");return;}
+            if(styles||lots||mapping||available){requireAny("lots");return;}
             if(path.startsWith("/api/v1/auth/"))return;
             throw new AccessDeniedException("This endpoint is outside the Style Configurator PAD workflow");
         }
