@@ -102,6 +102,16 @@ Advanced address override:
 deployment\windows\install.cmd start -BindAddress 192.168.1.10 -AllowedSubnet 192.168.1.0/24
 ```
 
+To allow specific external IPv4 source addresses through the Windows firewall, configure a comma-separated list (the local subnet remains allowed):
+
+```powershell
+deployment\windows\install.cmd configure -ExternalAllowedIps "203.0.113.10,203.0.113.11"
+```
+
+The list is saved as `EXTERNAL_ALLOWED_IPS` in `.env` and reused on subsequent configuration. Pass `-ExternalAllowedIps ""` to clear it. Existing authentication and permissions still apply. The firewall must see these source addresses: a VPN, proxy or NAT may change them. External clients also need a route to this machine, such as a VPN or router port forwarding; the installer does not set this up. For internet access use HTTPS with a certificate and hostname trusted by clients; the factory-local DNS and CA do not automatically provide public access. Other firewall rules may also grant access and should be reviewed on the host.
+
+See [incoming lot changes](docs/INCOMING_LOT_CHANGES.md) for the notification and API fields and [lot status flow](docs/LOT_STATUS_FLOW.md) for the transition diagram.
+
 ## One-time Linux installation
 
 From the repository root:

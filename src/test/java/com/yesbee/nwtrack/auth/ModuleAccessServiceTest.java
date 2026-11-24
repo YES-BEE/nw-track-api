@@ -52,6 +52,8 @@ class ModuleAccessServiceTest {
         UUID actor=UUID.randomUUID();when(access.actor()).thenReturn(actor);
         when(jdbc.queryForObject("select count(*) from users where id=? and initial_password_expires_at is not null",Integer.class,actor)).thenReturn(0);
         when(access.clientType()).thenReturn("PAD");when(access.role()).thenReturn("STYLE_CONFIGURATOR");
+        when(access.token()).thenReturn(Jwt.withTokenValue("test").header("alg","HS256").subject("creator").build());
+        when(access.modulesForUsername("creator")).thenReturn(List.of(Map.of("key","lots"),Map.of("key","tags")));
         var modules=new ModuleAccessService(jdbc,access);String id=UUID.randomUUID().toString();
         modules.authorize("/api/v1/auth/me","GET");
         modules.authorize("/api/v1/auth/change-password","POST");
@@ -68,6 +70,8 @@ class ModuleAccessServiceTest {
         modules.authorize("/api/v1/lots/"+id+"/trolley","DELETE");
         assertThatThrownBy(()->modules.authorize("/api/v1/styles","POST")).isInstanceOf(AccessDeniedException.class);
         assertThatThrownBy(()->modules.authorize("/api/v1/lots/"+id+"/dispatch","POST")).isInstanceOf(AccessDeniedException.class);
-        assertThatThrownBy(()->modules.authorize("/api/v1/processes","GET")).isInstanceOf(AccessDeniedException.class);
+        modules.authorize("/api/v1/processes","GET");
+        modules.authorize("/api/v1/nfc-tags","POST");
+        assertThatThrownBy(()->modules.authorize("/api/v1/processes","POST")).isInstanceOf(AccessDeniedException.class);
     }
 }

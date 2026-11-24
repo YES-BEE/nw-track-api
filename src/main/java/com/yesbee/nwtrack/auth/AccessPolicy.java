@@ -44,7 +44,7 @@ public class AccessPolicy {
     }
     public String tagPredicate(String alias){
         if(pcStyleConfigurator()&&hasModule("tags"))return "true";
-        if(global())return "true";
+        if(global()||padTagManager())return "true";
         return "(not "+alias+".active or "+alias+".process_id in(select p.id from processes p where "+processPredicate("p.id")+")"
             +" or "+alias+".machine_id in(select m.id from machines m where "+processPredicate("m.process_id")+")"
             +" or "+alias+".station_id in(select s.id from stations s where "+stationPredicate("s.id")+")"
@@ -56,6 +56,7 @@ public class AccessPolicy {
         if(jdbc.queryForObject("select count(*) from nfc_tags n where n.id=? and "+tagPredicate("n"),Integer.class,id)==0)throw new AccessDeniedException("Tag is outside the user's assignments");
     }
     public void asset(String type,UUID id){
+        if(padTagManager())return;
         switch(type.toUpperCase(Locale.ROOT)){
             case "PROCESS" -> readProcess(id);
             case "MACHINE" -> readProcess(jdbc.queryForObject("select process_id from machines where id=?",UUID.class,id));
@@ -72,6 +73,7 @@ public class AccessPolicy {
         if(token().getClaimAsStringList("roles")==null||!token().getClaimAsStringList("roles").contains(role()))throw new AccessDeniedException("Role changed; log in again");
     }
     public boolean hasModule(String key){return modulesForUsername(token().getSubject()).stream().anyMatch(m->key.equals(m.get("key")));}
+    public boolean padTagManager(){return "PAD".equals(clientType())&&"STYLE_CONFIGURATOR".equals(role())&&hasModule("tags");}
     public boolean ownStylesOnly(){
         if(role().equals("STYLE_CONFIGURATOR"))return true;
         return jdbc.queryForObject("select count(*) from role_modules rm join user_roles ur on ur.role_id=rm.role_id where ur.user_id=? and rm.module_key='newstyle'",Integer.class,actor())>0
@@ -116,11 +118,11 @@ public class AccessPolicy {
         process(actor,process);
     }
     public String stationPredicate(String column) {
-        if(pcStyleConfigurator()&&(hasModule("process")||hasModule("storage")))return "true";
+        if(padTagManager()||(pcStyleConfigurator()&&(hasModule("process")||hasModule("storage"))))return "true";
         return global()?"true":column+" in (select p.station_id from user_process_assignments upa join processes p on p.id=upa.process_id join stations s on s.id=p.station_id where p.active and s.active and upa.user_id='"+actor()+"'::uuid)";
     }
     public String processPredicate(String column) {
-        if(pcStyleConfigurator()&&hasModule("process"))return "true";
+        if(padTagManager()||(pcStyleConfigurator()&&hasModule("process")))return "true";
         return global()?"true":column+" in (select upa.process_id from user_process_assignments upa join processes p on p.id=upa.process_id join stations s on s.id=p.station_id where p.active and s.active and upa.user_id='"+actor()+"'::uuid)";
     }
     public String lotPredicate(String column) {

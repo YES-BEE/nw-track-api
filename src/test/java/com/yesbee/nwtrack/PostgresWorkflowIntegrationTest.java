@@ -57,7 +57,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PostgresWorkflowIntegrationTest {
     @Container static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine");
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){registry.add("spring.datasource.url",postgres::getJdbcUrl);registry.add("spring.datasource.username",postgres::getUsername);registry.add("spring.datasource.password",postgres::getPassword);registry.add("spring.jpa.hibernate.ddl-auto",()->"validate");registry.add("spring.flyway.enabled",()->"true");registry.add("nwtrack.outbox.enabled",()->"false");}
-    @Autowired JdbcTemplate jdbc; @Autowired ProductionService production; @Autowired OperationsService operations; @Autowired PlacementService placements; @Autowired QcService qc; @Autowired NfcAssetService nfc; @Autowired ProcessMachineService machines; @Autowired StyleRevisionService revisions;
+    @Autowired com.yesbee.nwtrack.workflow.OperationsController operationsController; @Autowired JdbcTemplate jdbc; @Autowired ProductionService production; @Autowired OperationsService operations; @Autowired PlacementService placements; @Autowired QcService qc; @Autowired NfcAssetService nfc; @Autowired ProcessMachineService machines; @Autowired StyleRevisionService revisions;
     @LocalServerPort int port;
     @Autowired ObjectMapper json;
     @Autowired NotificationService notifications;
@@ -587,6 +587,12 @@ class PostgresWorkflowIntegrationTest {
         assertThat(call("GET","/api/v1/trolleys/available",null,creatorPad).status()).isEqualTo(200);
         assertThat(call("GET","/api/v1/trolleys",null,creatorPad).status()).isEqualTo(200);
         assertThat(call("PUT",lotPath+"/trolley",Map.of("trolleyId",trolleyId),outsiderPad).status()).isEqualTo(403);
+        String uid=("PAD-"+suffix).toUpperCase();
+        jdbc.update("insert into nfc_tags(id,uid,name,asset_type,trolley_id,active) values (?,?,?,'TROLLEY',?::uuid,true)",UUID.randomUUID(),uid,uid,trolleyId);
+        assertThat(call("POST","/api/v1/nfc/resolve",Map.of("uid",uid),creatorPad).status()).isEqualTo(200);
+        assertThat(call("POST",lotPath+"/trolley-link",Map.of("trolleyId",trolleyId),outsiderPad).status()).isEqualTo(403);
+        assertThat(call("POST",lotPath+"/trolley-link",Map.of("trolleyId",trolleyId),creatorPad).status()).isEqualTo(200);
+        assertThat(call("DELETE",lotPath+"/trolley",null,creatorPad).status()).isEqualTo(200);
         Reply mapped=call("PUT",lotPath+"/trolley",Map.of("trolleyId",trolleyId),creatorPad);
         assertThat(mapped.status()).as(mapped.body().toString()).isEqualTo(200);
         assertThat(mapped.body().get("trolley_id").asText()).isEqualTo(trolleyId);
@@ -603,6 +609,37 @@ class PostgresWorkflowIntegrationTest {
         jdbc.update("update lots set status='DISPATCHED' where id=?::uuid",lotId);
         assertThat(call("DELETE",lotPath+"/trolley",null,creator).status()).isEqualTo(409);
         assertThat(call("POST",lotPath+"/dispatch",null,creator).status()).isEqualTo(403);
+    }
+
+    @Test void styleConfiguratorPadManagesTagsForAllAssetTypes()throws Exception{
+        String admin=login("admin","PC"),suffix=UUID.randomUUID().toString(),user="tag-pad-"+suffix;
+        assertThat(call("POST","/api/v1/users",java.util.Map.of("username",user,"displayName",user,"initialPassword","ChangeMe123!","role","STYLE_CONFIGURATOR"),admin).status()).isEqualTo(200);
+        String pad=login(user,"PAD");
+        UUID station=UUID.randomUUID(),process=UUID.randomUUID(),deviceProcess=UUID.randomUUID(),machine=UUID.randomUUID(),area=UUID.randomUUID(),unit=UUID.randomUUID(),trolley=UUID.randomUUID();
+        jdbc.update("insert into stations(id,code,name) values (?,?,?)",station,"TP-S-"+suffix,"Station");
+        jdbc.update("insert into processes(id,code,name,station_id,nfc_mode) values (?,?,?,?, 'PROCESS'),(?,?,?,?, 'DEVICES')",process,"TP-P-"+suffix,"Process",station,deviceProcess,"TP-D-"+suffix,"Device process",station);
+        jdbc.update("insert into machines(id,station_id,process_id,name,machine_type) values (?,?,?,?,?)",machine,station,deviceProcess,"Device","GENERAL");
+        jdbc.update("insert into storage_areas(id,station_id,code,name) values (?,?,?,?)",area,station,"TP-A-"+suffix,"Area");
+        jdbc.update("insert into storage_locations(id,station_id,storage_area_id,code,name) values (?,?,?,?,?)",unit,station,area,"TP-U-"+suffix,"Unit");
+        jdbc.update("insert into trolleys(id,code) values (?,?)",trolley,"TP-T-"+suffix);
+        for(String path:List.of("/api/v1/stations","/api/v1/processes","/api/v1/machines","/api/v1/storage-areas","/api/v1/storage-units/"+unit,"/api/v1/storage-locations","/api/v1/trolleys"))
+            assertThat(call("GET",path,null,pad).status()).as(path).isEqualTo(200);
+        String uid=("TAG-"+suffix).toUpperCase();
+        Reply created=call("POST","/api/v1/nfc-tags",java.util.Map.of("uid",uid,"name","Scanned "+suffix),pad);
+        assertThat(created.status()).as(created.body().toString()).isEqualTo(200);
+        String tag=created.body().get("id").asText();
+        assertThat(call("GET","/api/v1/nfc-tags/"+tag,null,pad).status()).isEqualTo(200);
+        assertThat(call("PUT","/api/v1/nfc-tags/"+tag,java.util.Map.of("uid",uid,"name","Updated "+suffix),pad).status()).isEqualTo(200);
+        var targets=java.util.Map.of("TROLLEY",trolley,"STATION",station,"PROCESS",process,"MACHINE",machine,"STORAGE_AREA",area,"STORAGE_UNIT",unit);
+        for(var target:targets.entrySet()){
+            Reply assigned=call("PUT","/api/v1/nfc-assignments/"+tag,java.util.Map.of("assetType",target.getKey(),"assetId",target.getValue(),"reason","Scanned tag"),pad);
+            assertThat(assigned.status()).as(target.getKey()+" "+assigned.body()).isEqualTo(200);
+            assertThat(call("POST","/api/v1/nfc/resolve",java.util.Map.of("uid",uid),pad).status()).isEqualTo(200);
+        }
+        assertThat(call("GET","/api/v1/nfc-assignments/"+tag+"/history",null,pad).body().get("totalElements").asInt()).isEqualTo(6);
+        assertThat(call("DELETE","/api/v1/nfc-assignments/"+tag,java.util.Map.of("reason","Replace tag"),pad).status()).isEqualTo(200);
+        assertThat(call("DELETE","/api/v1/nfc-tags/"+tag,null,pad).status()).isEqualTo(200);
+        assertThat(call("POST","/api/v1/stations",java.util.Map.of("code","NO","name","No","stationType","PRODUCTION"),pad).status()).isEqualTo(403);
     }
 
     @Test void lotQuantityEditingEnforcesOwnershipStagesAndAuditHistory()throws Exception{
@@ -1088,7 +1125,21 @@ class PostgresWorkflowIntegrationTest {
         UUID trolley=UUID.randomUUID();
         jdbc.update("insert into trolleys(id,code) values (?,'T-IT')",trolley);
         operations.linkTrolley(lot,trolley,actor);
-        operations.dispatch(lot,actor);
+        var firstDispatch=operations.dispatch(lot,actor);
+        assertThat(((Number)firstDispatch.get("progressPercent")).doubleValue()).isEqualTo(0.0);
+        assertThat(firstDispatch.get("completedRouteSteps")).isEqualTo(0L);
+        assertThat(firstDispatch.get("totalRouteSteps")).isEqualTo(2L);
+        assertThat(firstDispatch.get("currentProcessId")).isEqualTo(p1);
+        assertThat(firstDispatch.get("currentStepSequence")).isEqualTo(1);
+        assertThat(firstDispatch.get("nextStepSequence")).isEqualTo(2);
+        assertThat(firstDispatch.get("nextProcessId")).isEqualTo(p2);
+        assertThat(firstDispatch).containsKeys("currentLocationType", "currentLocationId", "createdAt", "completedAt", "version");
+        var incoming=operationsController.incoming(station).items().stream()
+                .filter(row->lot.equals(row.get("lot_id"))).findFirst().orElseThrow();
+        assertThat(((Number)incoming.get("progress_percent")).doubleValue()).isEqualTo(0.0);
+        assertThat(incoming.get("current_process_id")).isEqualTo(p1);
+        assertThat(incoming.get("next_step_sequence")).isEqualTo(2);
+        assertThat(incoming).containsKeys("current_route_sequence", "current_location_type", "created_at", "completed_at", "destination_station_name");
         UUID firstVisit=jdbc.queryForObject("select sv.id from station_visits sv join lot_route_entries lr on lr.id=sv.lot_route_entry_id where sv.lot_id=? and lr.sequence_no=1",UUID.class,lot);
         UUID firstExecution=jdbc.queryForObject("select id from process_executions where station_visit_id=?",UUID.class,firstVisit);
         UUID firstMachine=UUID.randomUUID();jdbc.update("insert into machines(id,station_id,name,machine_type,process_id) values (?,?,?,?,?)",firstMachine,station,"Washer IT","WASHER",p1);
@@ -1099,7 +1150,12 @@ class PostgresWorkflowIntegrationTest {
         machines.transition(firstExecution,"complete",null,null,List.of("MACHINE-P1-IT"),actor);
         assertThat(jdbc.queryForObject("select status from machines where id=?",String.class,firstMachine)).isEqualTo("AVAILABLE");
         operations.linkTrolley(lot,trolley,actor);
-        operations.dispatch(lot,actor);
+        var secondDispatch=operations.dispatch(lot,actor);
+        assertThat(((Number)secondDispatch.get("progressPercent")).doubleValue()).isEqualTo(50.0);
+        assertThat(secondDispatch.get("completedRouteSteps")).isEqualTo(1L);
+        assertThat(secondDispatch.get("currentProcessId")).isEqualTo(p2);
+        assertThat(secondDispatch.get("currentStepSequence")).isEqualTo(2);
+        assertThat(secondDispatch.get("nextStepId")).isNull();
         UUID qcVisit=jdbc.queryForObject("select sv.id from station_visits sv join lot_route_entries lr on lr.id=sv.lot_route_entry_id where sv.lot_id=? and lr.sequence_no=2",UUID.class,lot);
         UUID qcExecution=jdbc.queryForObject("select id from process_executions where station_visit_id=?",UUID.class,qcVisit);
         nfc.registerAndAssign("PROC-P2-IT","PROCESS",p2,actor,"integration test");
