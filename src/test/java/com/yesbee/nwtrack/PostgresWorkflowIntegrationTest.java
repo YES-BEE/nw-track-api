@@ -27,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PostgresWorkflowIntegrationTest {
     @Container static final PostgreSQLContainer postgres = new PostgreSQLContainer("postgres:17-alpine");
     @DynamicPropertySource static void database(DynamicPropertyRegistry registry){registry.add("spring.datasource.url",postgres::getJdbcUrl);registry.add("spring.datasource.username",postgres::getUsername);registry.add("spring.datasource.password",postgres::getPassword);registry.add("spring.jpa.hibernate.ddl-auto",()->"validate");registry.add("spring.flyway.enabled",()->"true");registry.add("nwtrack.outbox.enabled",()->"false");}
-    @Autowired JdbcTemplate jdbc; @Autowired ProductionService production; @Autowired OperationsService operations; @Autowired PlacementService placements; @Autowired QcService qc; @Autowired NfcAssetService nfc; @Autowired ProcessMachineService machines; @Autowired StyleRevisionService revisions;
+    @Autowired JdbcTemplate jdbc; @Autowired ProductionService production; @Autowired OperationsService operations; @Autowired com.yesbee.nwtrack.workflow.OperationsController operationsController; @Autowired PlacementService placements; @Autowired QcService qc; @Autowired NfcAssetService nfc; @Autowired ProcessMachineService machines; @Autowired StyleRevisionService revisions;
     @org.springframework.boot.test.web.server.LocalServerPort int port;
     @Autowired com.fasterxml.jackson.databind.ObjectMapper json;
     @Autowired com.yesbee.nwtrack.notification.NotificationService notifications;
@@ -955,7 +955,21 @@ class PostgresWorkflowIntegrationTest {
         UUID trolley=UUID.randomUUID();
         jdbc.update("insert into trolleys(id,code) values (?,'T-IT')",trolley);
         operations.linkTrolley(lot,trolley,actor);
-        operations.dispatch(lot,actor);
+        var firstDispatch=operations.dispatch(lot,actor);
+        assertThat(((Number)firstDispatch.get("progressPercent")).doubleValue()).isEqualTo(0.0);
+        assertThat(firstDispatch.get("completedRouteSteps")).isEqualTo(0L);
+        assertThat(firstDispatch.get("totalRouteSteps")).isEqualTo(2L);
+        assertThat(firstDispatch.get("currentProcessId")).isEqualTo(p1);
+        assertThat(firstDispatch.get("currentStepSequence")).isEqualTo(1);
+        assertThat(firstDispatch.get("nextStepSequence")).isEqualTo(2);
+        assertThat(firstDispatch.get("nextProcessId")).isEqualTo(p2);
+        assertThat(firstDispatch).containsKeys("currentLocationType", "currentLocationId", "createdAt", "completedAt", "version");
+        var incoming=operationsController.incoming(station).items().stream()
+                .filter(row->lot.equals(row.get("lot_id"))).findFirst().orElseThrow();
+        assertThat(((Number)incoming.get("progress_percent")).doubleValue()).isEqualTo(0.0);
+        assertThat(incoming.get("current_process_id")).isEqualTo(p1);
+        assertThat(incoming.get("next_step_sequence")).isEqualTo(2);
+        assertThat(incoming).containsKeys("current_route_sequence", "current_location_type", "created_at", "completed_at", "destination_station_name");
         UUID firstVisit=jdbc.queryForObject("select sv.id from station_visits sv join lot_route_entries lr on lr.id=sv.lot_route_entry_id where sv.lot_id=? and lr.sequence_no=1",UUID.class,lot);
         UUID firstExecution=jdbc.queryForObject("select id from process_executions where station_visit_id=?",UUID.class,firstVisit);
         UUID firstMachine=UUID.randomUUID();jdbc.update("insert into machines(id,station_id,name,machine_type,process_id) values (?,?,?,?,?)",firstMachine,station,"Washer IT","WASHER",p1);
@@ -966,7 +980,12 @@ class PostgresWorkflowIntegrationTest {
         machines.transition(firstExecution,"complete",null,null,List.of("MACHINE-P1-IT"),actor);
         assertThat(jdbc.queryForObject("select status from machines where id=?",String.class,firstMachine)).isEqualTo("AVAILABLE");
         operations.linkTrolley(lot,trolley,actor);
-        operations.dispatch(lot,actor);
+        var secondDispatch=operations.dispatch(lot,actor);
+        assertThat(((Number)secondDispatch.get("progressPercent")).doubleValue()).isEqualTo(50.0);
+        assertThat(secondDispatch.get("completedRouteSteps")).isEqualTo(1L);
+        assertThat(secondDispatch.get("currentProcessId")).isEqualTo(p2);
+        assertThat(secondDispatch.get("currentStepSequence")).isEqualTo(2);
+        assertThat(secondDispatch.get("nextStepId")).isNull();
         UUID qcVisit=jdbc.queryForObject("select sv.id from station_visits sv join lot_route_entries lr on lr.id=sv.lot_route_entry_id where sv.lot_id=? and lr.sequence_no=2",UUID.class,lot);
         UUID qcExecution=jdbc.queryForObject("select id from process_executions where station_visit_id=?",UUID.class,qcVisit);
         nfc.registerAndAssign("PROC-P2-IT","PROCESS",p2,actor,"integration test");
