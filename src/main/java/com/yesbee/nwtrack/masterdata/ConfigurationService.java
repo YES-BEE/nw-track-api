@@ -7,11 +7,14 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.*;
+import com.fasterxml.jackson.annotation.JsonAlias;
+import com.yesbee.nwtrack.auth.AccessPolicy;
+import java.util.Locale;
 
 @Service
 public class ConfigurationService {
-    private final JdbcTemplate jdbc; private final NfcAssetService nfc;private final com.yesbee.nwtrack.auth.AccessPolicy access;
-    public ConfigurationService(JdbcTemplate jdbc,NfcAssetService nfc,com.yesbee.nwtrack.auth.AccessPolicy access){this.jdbc=jdbc;this.nfc=nfc;this.access=access;}
+    private final JdbcTemplate jdbc; private final NfcAssetService nfc;private final AccessPolicy access;
+    public ConfigurationService(JdbcTemplate jdbc,NfcAssetService nfc,AccessPolicy access){this.jdbc=jdbc;this.nfc=nfc;this.access=access;}
     public UUID station(String reference,UUID stationId){
         if(reference==null||reference.isBlank()){
             if(stationId==null)throw new IllegalArgumentException("stationReference is required");
@@ -59,7 +62,7 @@ public class ConfigurationService {
         return id;
     }
     public void assignRegistered(String uid,String type,UUID asset,UUID actor){
-        UUID tag=jdbc.queryForObject("select id from nfc_tags where uid=? and status='ACTIVE'",UUID.class,uid.trim().toUpperCase(java.util.Locale.ROOT));
+        UUID tag=jdbc.queryForObject("select id from nfc_tags where uid=? and status='ACTIVE'",UUID.class,uid.trim().toUpperCase(Locale.ROOT));
         Map<String,Object> row=jdbc.queryForMap("select * from nfc_tags where id=? for update",tag);
         if(Boolean.TRUE.equals(row.get("active")))throw new BusinessRuleException("NFC_ALREADY_ASSIGNED","Unassign the NFC tag before assigning it to another asset");
         nfc.assign(tag,type,asset,actor,"Configuration saved");
@@ -78,13 +81,13 @@ public class ConfigurationService {
             @Size(max=50) String code,
             @NotBlank @Size(max=150) String name,
             @Size(max=2000) String description,
-            @com.fasterxml.jackson.annotation.JsonAlias({"stationReference","station"}) String stationNumber,
+            @JsonAlias({"stationReference","station"}) String stationNumber,
             UUID stationId,@Positive Integer targetDurationSeconds,
-            @NotBlank @com.fasterxml.jackson.annotation.JsonAlias("mode") String nfcMode,
+            @NotBlank @JsonAlias("mode") String nfcMode,
             Boolean quality,
-            @com.fasterxml.jackson.annotation.JsonAlias({"processTag","nfcTagId"}) String nfcUid,
+            @JsonAlias({"processTag","nfcTagId"}) String nfcUid,
             @Size(max=50) List<@Valid DeviceCommand> devices,
             @Min(0) @Max(50) Integer deviceCount,UUID tagId){}
     public record DeviceCommand(UUID id,@NotBlank String name,String description,String type,
-            @com.fasterxml.jackson.annotation.JsonAlias({"tag","nfcTagId"}) String nfcUid,UUID tagId){}
+            @JsonAlias({"tag","nfcTagId"}) String nfcUid,UUID tagId){}
 }

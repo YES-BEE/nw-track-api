@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class TransportRequestService {
@@ -21,6 +22,6 @@ public class TransportRequestService {
     private void event(UUID id,String status,String providerEventId,Map<String,Object> detail){jdbc.update("insert into transport_request_events(transport_request_id,status,provider_event_id,detail) values (?,?,?,?::jsonb)",id,status,providerEventId,toJson(detail));}
     private String location(UUID id){return jdbc.queryForObject("select code from transport_locations where id=? and active",String.class,id);}
     private RequestRow getForUpdate(UUID id){RequestRow row=jdbc.queryForObject("select id,lot_id,trolley_id,source_location_id,destination_location_id,provider_mission_id,status,priority from transport_requests where id=? for update",(rs,n)->new RequestRow((UUID)rs.getObject(1),(UUID)rs.getObject(2),(UUID)rs.getObject(3),(UUID)rs.getObject(4),(UUID)rs.getObject(5),rs.getString(6),rs.getString(7),rs.getInt(8)),id);if(row==null)throw new BusinessRuleException("TRANSPORT_NOT_FOUND","Transport request not found");return row;}
-    private String toJson(Map<String,Object> value){try{return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(value);}catch(Exception e){throw new IllegalStateException(e);}}
+    private String toJson(Map<String,Object> value){try{return new ObjectMapper().writeValueAsString(value);}catch(Exception e){throw new IllegalStateException(e);}}
     private record RequestRow(UUID id,UUID lotId,UUID trolleyId,UUID sourceId,UUID destinationId,String providerMissionId,String status,int priority){}
 }

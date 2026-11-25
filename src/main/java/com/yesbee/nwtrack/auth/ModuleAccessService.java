@@ -49,6 +49,7 @@ public class ModuleAccessService {
 
         if(path.startsWith("/api/v1/styles")&&access.ownStylesOnly()
             &&!(method.equals("POST")&&path.equals("/api/v1/styles"))
+            &&!(method.equals("PUT")&&path.matches("/api/v1/styles/[^/]+"))
             &&!(method.equals("GET")&&(path.equals("/api/v1/styles")||path.matches("/api/v1/styles/[^/]+(/derived-route)?"))))
             throw new AccessDeniedException("New Style grants create and view own styles only");
         if(!"PC".equals(access.clientType())){access.require(ApiAccessConfiguration.permission(path,method));return;}
@@ -69,7 +70,9 @@ public class ModuleAccessService {
             boolean creator=access.role().equals("STYLE_CONFIGURATOR")||(!has("styles")&&has("newstyle"));
             if(creator){
                 requireAny("newstyle");
-                if(!(method.equals("POST")&&path.equals("/api/v1/styles"))&&!(method.equals("GET")&&(path.equals("/api/v1/styles")||path.matches("/api/v1/styles/[^/]+(/derived-route)?"))))
+                if(!(method.equals("POST")&&path.equals("/api/v1/styles"))
+                    &&!(method.equals("PUT")&&path.matches("/api/v1/styles/[^/]+"))
+                    &&!(method.equals("GET")&&(path.equals("/api/v1/styles")||path.matches("/api/v1/styles/[^/]+(/derived-route)?"))))
                     throw new AccessDeniedException("New Style grants create and view own styles only");
             }else requireAny("styles");
             return;

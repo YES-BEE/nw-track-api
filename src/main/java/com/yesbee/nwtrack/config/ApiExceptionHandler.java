@@ -14,11 +14,13 @@ import org.springframework.dao.EmptyResultDataAccessException;
 import java.net.URI;
 import java.util.Map;
 import java.util.stream.Collectors;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.core.AuthenticationException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
-    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
-    ProblemDetail forbidden(org.springframework.security.access.AccessDeniedException ex) {
+    @ExceptionHandler(AccessDeniedException.class)
+    ProblemDetail forbidden(AccessDeniedException ex) {
         ProblemDetail detail=ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN,ex.getMessage());
         detail.setProperty("code","ACCESS_DENIED");return detail;
     }
@@ -34,8 +36,8 @@ public class ApiExceptionHandler {
     ProblemDetail invalid(IllegalArgumentException ex) {
         ProblemDetail detail=ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,ex.getMessage());detail.setTitle("Invalid request");detail.setProperty("code","INVALID_ARGUMENT");return detail;
     }
-    @ExceptionHandler(org.springframework.security.core.AuthenticationException.class)
-    ProblemDetail unauthorized(org.springframework.security.core.AuthenticationException ex) {
+    @ExceptionHandler(AuthenticationException.class)
+    ProblemDetail unauthorized(AuthenticationException ex) {
         ProblemDetail detail = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED, ex.getMessage());
         detail.setTitle("Authentication failed"); detail.setProperty("code", "AUTHENTICATION_FAILED"); return detail;
     }

@@ -7,11 +7,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
+import com.yesbee.nwtrack.workflow.OperationsService;
+import java.util.Set;
 
 @Service
 public class QcService {
-    private final JdbcTemplate jdbc;private final StationAccessService access;private final com.yesbee.nwtrack.workflow.OperationsService operations;
-    public QcService(JdbcTemplate jdbc,StationAccessService access,com.yesbee.nwtrack.workflow.OperationsService operations){this.jdbc=jdbc;this.access=access;this.operations=operations;}
+    private final JdbcTemplate jdbc;private final StationAccessService access;private final OperationsService operations;
+    public QcService(JdbcTemplate jdbc,StationAccessService access,OperationsService operations){this.jdbc=jdbc;this.access=access;this.operations=operations;}
     @Transactional public UUID completeExecution(UUID execution,int passed,int rejected,String remarks,UUID actor){
         if(!operations.isFinalQuality(execution))throw new BusinessRuleException("QC_NOT_FINAL","Execution is not the final quality process");
         UUID lot=jdbc.queryForObject("select sv.lot_id from station_visits sv join process_executions pe on pe.station_visit_id=sv.id where pe.id=?",UUID.class,execution);
@@ -25,7 +27,7 @@ public class QcService {
         if(rejected>0&&(reason==null||reason.isBlank()))throw new BusinessRuleException("QC_REMARKS_REQUIRED","Remarks are required when pieces are rejected");
         String expected=rejected==0?"PASS":good==0?"REJECT":"PARTIAL_REJECT";
         if(!expected.equals(outcome))throw new BusinessRuleException("QC_OUTCOME_MISMATCH","Outcome does not match the passed and rejected quantities");
-        if(!java.util.Set.of("PASS","PARTIAL_REJECT","REJECT").contains(outcome))throw new BusinessRuleException("QC_OUTCOME_INVALID","Unknown QC outcome");
+        if(!Set.of("PASS","PARTIAL_REJECT","REJECT").contains(outcome))throw new BusinessRuleException("QC_OUTCOME_INVALID","Unknown QC outcome");
         UUID finalExecution=jdbc.queryForObject("select pe.id from process_executions pe join station_visits sv on sv.id=pe.station_visit_id join lot_route_entries lr on lr.id=sv.lot_route_entry_id where sv.lot_id=? order by lr.sequence_no desc,pe.sequence_no desc limit 1",UUID.class,lotId);
         Boolean atQc=operations.isFinalQuality(finalExecution);
         if(!Boolean.TRUE.equals(atQc))throw new BusinessRuleException("QC_NOT_FINAL","Lot route does not end at QC");

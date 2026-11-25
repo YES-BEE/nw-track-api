@@ -6,11 +6,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import com.yesbee.nwtrack.qc.QcService;
+import java.util.Locale;
 
 @Service
 public class ProcessMachineService {
-    private final JdbcTemplate jdbc;private final OperationsService operations;private final StationAccessService access;private final com.yesbee.nwtrack.qc.QcService qc;
-    public ProcessMachineService(JdbcTemplate jdbc,OperationsService operations,StationAccessService access,com.yesbee.nwtrack.qc.QcService qc){this.jdbc=jdbc;this.operations=operations;this.access=access;this.qc=qc;}
+    private final JdbcTemplate jdbc;private final OperationsService operations;private final StationAccessService access;private final QcService qc;
+    public ProcessMachineService(JdbcTemplate jdbc,OperationsService operations,StationAccessService access,QcService qc){this.jdbc=jdbc;this.operations=operations;this.access=access;this.qc=qc;}
 
     @Transactional
     public String transition(UUID executionId,String action,String reason,String processNfcUid,List<String> machineNfcUids,UUID actor){
@@ -47,8 +49,8 @@ public class ProcessMachineService {
     @Transactional public String completeQuality(UUID executionId,int passed,int rejected,String remarks,UUID actor){access.assertCanExecute(actor,executionId);qc.completeExecution(executionId,passed,rejected,remarks,actor);releaseMachines(executionId,actor);return "COMPLETED";}
     private void verifyMachineProcess(UUID machine,UUID process){if(jdbc.queryForObject("select count(*) from machines where id=? and process_id=?",Integer.class,machine,process)!=1)throw new BusinessRuleException("DEVICE_PROCESS_MISMATCH","Device does not belong to this process");}
     private void releaseMachines(UUID executionId,UUID actor){List<UUID> ids=jdbc.query("select machine_id from process_machine_usage where process_execution_id=? and completed_at is null",(rs,n)->(UUID)rs.getObject(1),executionId);jdbc.update("update process_machine_usage set completed_at=now(),completed_by=? where process_execution_id=? and completed_at is null",actor,executionId);for(UUID id:ids)jdbc.update("update machines set status='AVAILABLE',version=version+1 where id=? and status='IN_USE'",id);}
-    private void verifyProcessTag(String uid,UUID process){if(uid==null||uid.isBlank())throw new BusinessRuleException("PROCESS_SCAN_REQUIRED","Scan the Process NFC tag");Integer count=jdbc.queryForObject("select count(*) from nfc_tags where uid=? and process_id=? and asset_type='PROCESS' and active",Integer.class,uid.trim().toUpperCase(java.util.Locale.ROOT),process);if(count==null||count==0)throw new BusinessRuleException("PROCESS_NFC_MISMATCH","Scanned Process NFC does not match the execution");}
-    private UUID machine(String uid){List<UUID> ids=jdbc.query("select machine_id from nfc_tags where uid=? and asset_type='MACHINE' and active",(rs,n)->(UUID)rs.getObject(1),uid.trim().toUpperCase(java.util.Locale.ROOT));if(ids.isEmpty())throw new BusinessRuleException("MACHINE_NFC_INVALID","Machine NFC is unknown or inactive");return ids.getFirst();}
+    private void verifyProcessTag(String uid,UUID process){if(uid==null||uid.isBlank())throw new BusinessRuleException("PROCESS_SCAN_REQUIRED","Scan the Process NFC tag");Integer count=jdbc.queryForObject("select count(*) from nfc_tags where uid=? and process_id=? and asset_type='PROCESS' and active",Integer.class,uid.trim().toUpperCase(Locale.ROOT),process);if(count==null||count==0)throw new BusinessRuleException("PROCESS_NFC_MISMATCH","Scanned Process NFC does not match the execution");}
+    private UUID machine(String uid){List<UUID> ids=jdbc.query("select machine_id from nfc_tags where uid=? and asset_type='MACHINE' and active",(rs,n)->(UUID)rs.getObject(1),uid.trim().toUpperCase(Locale.ROOT));if(ids.isEmpty())throw new BusinessRuleException("MACHINE_NFC_INVALID","Machine NFC is unknown or inactive");return ids.getFirst();}
     private void verifyMachineAvailable(UUID id,UUID station){Integer count=jdbc.queryForObject("select count(*) from machines where id=? and station_id=? and active and status='AVAILABLE'",Integer.class,id,station);if(count==null||count==0)throw new BusinessRuleException("MACHINE_UNAVAILABLE","Machine is unavailable, already in use, or belongs to another Station");}
     private Execution execution(UUID id){Map<String,Object> row=one("select pe.process_id,sv.station_id from process_executions pe join station_visits sv on sv.id=pe.station_visit_id where pe.id=?",id);return new Execution((UUID)row.get("process_id"),(UUID)row.get("station_id"));}
     private Map<String,Object> one(String sql,Object...args){List<Map<String,Object>> rows=jdbc.queryForList(sql,args);if(rows.isEmpty())throw new BusinessRuleException("NOT_FOUND","Requested execution or Machine usage was not found");return rows.getFirst();}

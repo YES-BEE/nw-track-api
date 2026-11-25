@@ -2,6 +2,8 @@
 
 For the agreed dashboard/display screen fields and refresh contract, see [Dashboard and factory displays](docs/DASHBOARD_DISPLAY.md).
 
+For the eight streamed XLSX/CSV/PDF reports, required date filters, database-backed catalogue, and export audit history, see [Reports and Analysis API](docs/REPORTS_API.md).
+
 For generated lot numbers, planned lot creation at release, optional quantities,
 ownership and trolley mapping, see [Lot Management](docs/LOT_MANAGEMENT.md).
 

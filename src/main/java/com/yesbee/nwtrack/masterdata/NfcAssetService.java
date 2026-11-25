@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
+import java.util.Locale;
 
 @Service
 public class NfcAssetService {
@@ -18,7 +19,7 @@ public class NfcAssetService {
     @Transactional
     public UUID registerAndAssign(String uid,String assetType,UUID assetId,UUID actor,String reason){
         String type=normalizeType(assetType); verifyAsset(type,assetId);
-        List<UUID> existing=jdbc.query("select id from nfc_tags where uid=?",(rs,n)->(UUID)rs.getObject(1),uid.trim().toUpperCase(java.util.Locale.ROOT));
+        List<UUID> existing=jdbc.query("select id from nfc_tags where uid=?",(rs,n)->(UUID)rs.getObject(1),uid.trim().toUpperCase(Locale.ROOT));
         if(!existing.isEmpty()){
             UUID tag=existing.getFirst();
             Integer active=jdbc.queryForObject("select count(*) from nfc_tags where id=? and active",Integer.class,tag);
@@ -27,7 +28,7 @@ public class NfcAssetService {
         }
         UUID id=UUID.randomUUID();
         verifyAreaTag(type,assetId,id);
-        jdbc.update("insert into nfc_tags(id,uid,name,asset_type,"+COLUMNS.get(type)+") values (?,?,?,?,?)",id,uid.trim().toUpperCase(java.util.Locale.ROOT),uid.trim().toUpperCase(java.util.Locale.ROOT),type,assetId);
+        jdbc.update("insert into nfc_tags(id,uid,name,asset_type,"+COLUMNS.get(type)+") values (?,?,?,?,?)",id,uid.trim().toUpperCase(Locale.ROOT),uid.trim().toUpperCase(Locale.ROOT),type,assetId);
         history(id,type,assetId,actor,reason);return id;
     }
 

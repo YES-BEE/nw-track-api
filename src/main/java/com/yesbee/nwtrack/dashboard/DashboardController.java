@@ -14,14 +14,15 @@ import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.*;
+import com.yesbee.nwtrack.auth.AccessPolicy;
 
 @RestController @RequestMapping("/api/v1") @Tag(name="Dashboard and displays")
 @PreAuthorize("isAuthenticated()")
 public class DashboardController {
     private final JdbcTemplate jdbc;
-    private final com.yesbee.nwtrack.auth.AccessPolicy access;
+    private final AccessPolicy access;
     private final ZoneId factoryZone;
-    public DashboardController(JdbcTemplate jdbc,com.yesbee.nwtrack.auth.AccessPolicy access,
+    public DashboardController(JdbcTemplate jdbc,AccessPolicy access,
             @Value("${nwtrack.factory-timezone:Asia/Kolkata}") String factoryTimezone){
         this.jdbc=jdbc;this.access=access;this.factoryZone=ZoneId.of(factoryTimezone);
     }
@@ -32,9 +33,9 @@ public class DashboardController {
         Map<String,Object> result=new LinkedHashMap<>();
         result.put("snapshotAt",jdbc.queryForObject("select transaction_timestamp()",OffsetDateTime.class));
         result.put("refreshIntervalSeconds",5);
-        var styleCounts=counts("select status,count(*) count from styles where id in(select l.style_id from lots l where "+access.lotPredicate("l.id")+") group by status order by status");
-        var lotCounts=counts("select status,count(*) count from lots l where "+access.lotPredicate("l.id")+" group by status order by status");
-        long stored=jdbc.queryForObject("select count(distinct lot_id) from storage_occupancies where retrieved_at is null and "+access.stationPredicate("station_id")+" and "+access.lotPredicate("lot_id"),Long.class);
+        var styleCounts=counts("select status,count(*) count from styles where id in(select l.style_id from lots l where "+access.analyticsLotPredicate("l.id")+") group by status order by status");
+        var lotCounts=counts("select status,count(*) count from lots l where "+access.analyticsLotPredicate("l.id")+" group by status order by status");
+        long stored=jdbc.queryForObject("select count(distinct lot_id) from storage_occupancies where retrieved_at is null and "+access.analyticsStationPredicate("station_id")+" and "+access.analyticsLotPredicate("lot_id"),Long.class);
         long available=jdbc.queryForObject("select count(*) from trolleys t where active and not exists(select 1 from lot_trolley_assignments a where a.trolley_id=t.id and a.released_at is null)",Long.class);
         String stationSql=stationSql();
         var workload=jdbc.queryForMap("select coalesce(sum(wip),0)::bigint total,coalesce(max(wip),0)::bigint highest from ("+stationSql+") station_counts");
@@ -57,31 +58,35 @@ public class DashboardController {
     }
     private long count(List<Map<String,Object>> rows,String status){return rows.stream().filter(row->status.equals(row.get("status"))).mapToLong(row->((Number)row.get("count")).longValue()).sum();}
 
-    @GetMapping({"/dashboard/lots","/displays/lots"})
-    public ApiPage<Map<String,Object>> lots(@ModelAttribute LotFilters filters){return filteredLots(filters);}
-    @GetMapping({"/dashboard/lots/{id}","/displays/lots/{id}"})
-    public Map<String,Object> lotDetail(@PathVariable UUID id){access.lot(id);return jdbc.queryForMap(LOT_VIEW+" where l.id=?",id);}
+    @PostMapping("/dashboard/lots")
+    public ApiPage<Map<String,Object>> lots(@RequestBody LotFilters filters){return filteredLots(filters);}
+    @GetMapping("/displays/lots")
+    public ApiPage<Map<String,Object>> displayLots(@ModelAttribute DisplayLotFilters filters){return filteredLots(filters.body());}
+    @GetMapping("/dashboard/lots/{id}")
+    public Map<String,Object> lotDetail(@PathVariable UUID id){access.analyticsLot(id);return jdbc.queryForMap(LOT_VIEW+" where l.id=?",id);}
+    @GetMapping("/displays/lots/{id}")
+    public Map<String,Object> displayLotDetail(@PathVariable UUID id){access.analyticsLot(id);return jdbc.queryForMap(LOT_VIEW+" where l.id=?",id);}
     @GetMapping("/reports/style-progress")
     public ApiPage<Map<String,Object>> styleProgress(){
         return Pages.query(jdbc,"select s.id,s.style_number,s.status,s.created_at,s.released_at,"+
             "count(v.id) lot_count,count(v.id) filter(where v.status='COMPLETED') completed_lots,"+
             "coalesce(round(avg(v.progress_percent),2),0) progress_percent from styles s left join ("+
-            LOT_VIEW+" where "+access.lotPredicate("l.id")+") v on v.style_id=s.id where "+
-            access.stylePredicate("s")+" group by s.id order by s.created_at desc,s.id");
+            LOT_VIEW+" where "+access.analyticsLotPredicate("l.id")+") v on v.style_id=s.id where "+
+            access.analyticsStylePredicate("s")+" group by s.id order by s.created_at desc,s.id");
     }
-    @GetMapping("/reports/lot-progress")
-    public ApiPage<Map<String,Object>> lotProgress(@ModelAttribute LotFilters filters){return filteredLots(filters);}
+    @PostMapping("/reports/lot-progress")
+    public ApiPage<Map<String,Object>> lotProgress(@RequestBody LotFilters filters){return filteredLots(filters);}
 
     private String filteredSource(LotFilters filters,List<Object> args){
-        return " from ("+LOT_VIEW+" where "+access.lotPredicate("l.id")+") v"+filters.where(args);
+        return " from ("+LOT_VIEW+" where "+access.analyticsLotPredicate("l.id")+") v"+filters.where(args);
     }
     private ApiPage<Map<String,Object>> filteredLots(LotFilters filters){
         List<Object> args=new ArrayList<>();
-        return Pages.query(jdbc,"select v.*"+filteredSource(filters,args)+" order by v.created_at desc,v.id",args.toArray());
+        return Pages.query(jdbc,filters.options(),"select v.*"+filteredSource(filters,args)+" order by v.created_at desc,v.id",args.toArray());
     }
 
-    @GetMapping({"/dashboard/filter-options/{type}","/reports/filter-options/{type}"})
-    public ApiPage<Map<String,Object>> filterOptions(@PathVariable String type,@ModelAttribute LotFilters filters){
+    @PostMapping({"/dashboard/filter-options/{type}","/reports/filter-options/{type}"})
+    public ApiPage<Map<String,Object>> filterOptions(@PathVariable String type,@RequestBody LotFilters filters){
         List<Object> args=new ArrayList<>();
         String source=filteredSource(filters,args);
         String sql=switch(type){
@@ -104,9 +109,13 @@ public class DashboardController {
                 if(filters.stationId()!=null){matchingStation=" and sv.station_id=?";args.add(filters.stationId());}
                 yield "select distinct p.id,p.code,p.name from processes p join process_executions pe on pe.process_id=p.id join station_visits sv on sv.id=pe.station_visit_id join (select v.id"+source+") eligible on eligible.id=sv.lot_id where not (pe.status='SKIPPED' and coalesce(pe.reason,'') like 'Superseded by Manager route revision:%')"+matchingStation+" order by p.name,p.id";
             }
-            default -> throw new IllegalArgumentException("type must be lots, styles, stations or processes");
+            case "operators" -> "select distinct u.id,u.display_name name from users u"+
+                " join process_executions pe on pe.operator_id=u.id join station_visits sv on sv.id=pe.station_visit_id"+
+                " join (select v.id"+source+") eligible on eligible.id=sv.lot_id order by name,u.id";
+            case "statuses" -> "select distinct v.status id,v.status name"+source+" order by name";
+            default -> throw new IllegalArgumentException("type must be lots, styles, stations, processes, operators or statuses");
         };
-        return Pages.query(jdbc,sql,args.toArray());
+        return Pages.query(jdbc,filters.options(),sql,args.toArray());
     }
     @GetMapping("/stations/{id}/work-in-progress") public ApiPage<Map<String,Object>> station(@PathVariable UUID id){return Pages.query(jdbc,LOT_VIEW+" join station_visits sv2 on sv2.lot_id=l.id where sv2.station_id=? and sv2.status in ('DISPATCHED','RECEIVED','ACTIVE','READY_FOR_DISPATCH') and "+access.lotPredicate("l.id")+" and l.status not in ('COMPLETED','CANCELLED') order by l.created_at,l.id",id);}
     @GetMapping("/displays/factory-summary")
@@ -133,11 +142,11 @@ public class DashboardController {
                  and (l.completed_at is null or l.completed_at>b.bucket_end)
                  and (l.cancelled_at is null or l.cancelled_at>b.bucket_end)) in_progress
             from buckets b order by b.bucket_start
-            """.formatted(access.lotPredicate("l.id")),now.toOffsetDateTime(),start.toOffsetDateTime(),
+            """.formatted(access.analyticsLotPredicate("l.id")),now.toOffsetDateTime(),start.toOffsetDateTime(),
                 now.withMinute(0).withSecond(0).withNano(0).toOffsetDateTime(),now.toOffsetDateTime());
         return Map.of("date",start.toLocalDate(),"timezone",factoryZone.getId(),"interval","HOUR","points",points);
     }
-    private String stationSql(){return "select s.id,s.code,s.name,count(sv.id) wip from stations s left join station_visits sv on sv.station_id=s.id and sv.status in ('DISPATCHED','RECEIVED','ACTIVE','READY_FOR_DISPATCH') and exists(select 1 from lots scoped_l where scoped_l.id=sv.lot_id and scoped_l.status not in ('COMPLETED','CANCELLED') and "+access.lotPredicate("scoped_l.id")+") where "+access.stationPredicate("s.id")+" group by s.id";}
+    private String stationSql(){return "select s.id,s.code,s.name,count(sv.id) wip from stations s left join station_visits sv on sv.station_id=s.id and sv.status in ('DISPATCHED','RECEIVED','ACTIVE','READY_FOR_DISPATCH') and exists(select 1 from lots scoped_l where scoped_l.id=sv.lot_id and scoped_l.status not in ('COMPLETED','CANCELLED') and "+access.analyticsLotPredicate("scoped_l.id")+") where "+access.analyticsStationPredicate("s.id")+" group by s.id";}
     private ApiPage<Map<String,Object>> stationWip(){return Pages.query(jdbc,"select station_counts.*,coalesce(round(100.0*wip/nullif(sum(wip) over (),0),2),0) share_percent from ("+stationSql()+") station_counts order by code,id");}
     private static final String LOT_VIEW="""
         select l.id,l.lot_number,l.quantity,l.status,l.current_route_sequence,l.current_location_type,l.current_location_id,l.created_at,l.completed_at,

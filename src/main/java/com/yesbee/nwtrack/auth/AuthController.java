@@ -14,13 +14,16 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
 import java.util.List;
+import com.yesbee.nwtrack.users.ProcessAssignmentService;
+import jakarta.validation.constraints.Pattern;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/auth")
 @Tag(name = "Authentication", description = "Local user authentication and JWT issuance")
 public class AuthController {
-    private final AuthenticationManager authenticationManager; private final JwtEncoder encoder; private final NwTrackProperties properties; private final AccessPolicy access;private final com.yesbee.nwtrack.users.ProcessAssignmentService assignments;
-    public AuthController(AuthenticationManager authenticationManager, JwtEncoder encoder, NwTrackProperties properties,AccessPolicy access,com.yesbee.nwtrack.users.ProcessAssignmentService assignments) { this.authenticationManager=authenticationManager; this.encoder=encoder; this.properties=properties; this.access=access;this.assignments=assignments; }
+    private final AuthenticationManager authenticationManager; private final JwtEncoder encoder; private final NwTrackProperties properties; private final AccessPolicy access;private final ProcessAssignmentService assignments;
+    public AuthController(AuthenticationManager authenticationManager, JwtEncoder encoder, NwTrackProperties properties,AccessPolicy access,ProcessAssignmentService assignments) { this.authenticationManager=authenticationManager; this.encoder=encoder; this.properties=properties; this.access=access;this.assignments=assignments; }
 
     @PostMapping("/login")
     @Operation(summary = "Log in", description = "Authenticates an active local user and returns a bearer JWT")
@@ -34,6 +37,6 @@ public class AuthController {
         String token = encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
         return new TokenResponse(token, "Bearer", properties.security().accessTokenTtl().toSeconds(), auth.getName(), roles,assignments.forUsername(auth.getName()),access.modulesForUsername(auth.getName()));
     }
-    public record LoginRequest(@NotBlank String username, @NotBlank String password,@NotBlank @jakarta.validation.constraints.Pattern(regexp="PC|PAD") String clientType) {}
-    public record TokenResponse(String accessToken, String tokenType, long expiresIn, String username, List<String> roles,List<com.yesbee.nwtrack.users.ProcessAssignmentService.View> processAssignments,List<java.util.Map<String,Object>> modules) {}
+    public record LoginRequest(@NotBlank String username, @NotBlank String password,@NotBlank @Pattern(regexp="PC|PAD") String clientType) {}
+    public record TokenResponse(String accessToken, String tokenType, long expiresIn, String username, List<String> roles,List<ProcessAssignmentService.View> processAssignments,List<Map<String,Object>> modules) {}
 }

@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.servlet.*;
 import org.springframework.web.servlet.config.annotation.*;
 import java.util.*;
+import org.springframework.web.util.UrlPathHelper;
 
 @Configuration
 public class ApiAccessConfiguration implements WebMvcConfigurer {
@@ -14,7 +15,7 @@ public class ApiAccessConfiguration implements WebMvcConfigurer {
     @Override public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(new HandlerInterceptor(){
             @Override public boolean preHandle(HttpServletRequest request,HttpServletResponse response,Object handler) {
-                String path=org.springframework.web.util.UrlPathHelper.defaultInstance.getLookupPathForRequest(request);
+                String path=UrlPathHelper.defaultInstance.getLookupPathForRequest(request);
                 if(path.equals("/api/v1/auth/login")||path.equals("/api/v1/auth/refresh")) return true;
                 modules.authorize(path,request.getMethod());
                 String[] parts=path.substring("/api/v1/".length()).split("/");
@@ -24,14 +25,14 @@ public class ApiAccessConfiguration implements WebMvcConfigurer {
                     UUID id=null;try{id=UUID.fromString(parts[index]);}catch(IllegalArgumentException ignored){}
                     boolean tagAssetRead="GET".equals(request.getMethod())&&access.padTagManager()&&Set.of("stations","processes","machines","storage-areas","storage-units","storage-locations").contains(resource);
                     if(id!=null&&!tagAssetRead) switch(resource) {
-                        case "stations" -> access.station(id);
+                        case "stations" -> {if(path.startsWith("/api/v1/displays/"))access.analyticsStation(id);else access.station(id);}
                         case "processes" -> access.readProcess(id);
                         case "machines" -> access.readProcess(jdbc.queryForObject("select process_id from machines where id=?",UUID.class,id));
                         case "storage-areas" -> access.station(jdbc.queryForObject("select station_id from storage_areas where id=?",UUID.class,id));
                         case "storage-units","storage-locations" -> access.station(jdbc.queryForObject("select station_id from storage_locations where id=?",UUID.class,id));
                         case "station-visits" -> access.station(jdbc.queryForObject("select station_id from station_visits where id=?",UUID.class,id));
                         case "process-executions" -> access.execution(access.actor(),id);
-                        case "lots" -> access.lot(id);
+                        case "lots" -> {if(path.startsWith("/api/v1/displays/"))access.analyticsLot(id);else access.lot(id);}
                         case "styles" -> {if(access.ownStylesOnly()||!(path.endsWith("/lots")&&"PC".equals(access.clientType())&&modules.has("lots")))access.style(id);}
                         case "nfc-tags","nfc-assignments" -> access.tag(id);
                         case "transport-requests" -> access.lot(jdbc.queryForObject("select lot_id from transport_requests where id=?",UUID.class,id));

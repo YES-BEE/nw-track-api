@@ -10,6 +10,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.yesbee.nwtrack.shared.ApiPage;
+import io.swagger.v3.oas.models.media.IntegerSchema;
+import io.swagger.v3.oas.models.media.StringSchema;
+import io.swagger.v3.oas.models.parameters.Parameter;
+import java.math.BigDecimal;
+import java.util.Set;
+import org.springdoc.core.customizers.OperationCustomizer;
 
 @Configuration
 public class OpenApiConfig {
@@ -19,14 +26,14 @@ public class OpenApiConfig {
     ObjectMapper legacyObjectMapper() { return JsonMapper.builder().findAndAddModules().build(); }
 
     @Bean
-    org.springdoc.core.customizers.OperationCustomizer collectionPagingParameters(){
+    OperationCustomizer collectionPagingParameters(){
         return (operation,method)->{
-            boolean paged=com.yesbee.nwtrack.shared.ApiPage.class.isAssignableFrom(method.getReturnType().getParameterType())
-                || java.util.Set.of("lookups","bootstrap","changes","progress","stationDisplay","summary","factoryDisplay").contains(method.getMethod().getName());
+            boolean paged=ApiPage.class.isAssignableFrom(method.getReturnType().getParameterType())
+                || Set.of("lookups","bootstrap","changes","progress","stationDisplay","summary","factoryDisplay").contains(method.getMethod().getName());
             if(paged){
-                operation.addParametersItem(new io.swagger.v3.oas.models.parameters.Parameter().name("page").in("query").description("Zero-based page number").schema(new io.swagger.v3.oas.models.media.IntegerSchema()._default(0).minimum(java.math.BigDecimal.ZERO)));
-                operation.addParametersItem(new io.swagger.v3.oas.models.parameters.Parameter().name("size").in("query").description("Items per page, 1–100").schema(new io.swagger.v3.oas.models.media.IntegerSchema()._default(20).minimum(java.math.BigDecimal.ONE).maximum(java.math.BigDecimal.valueOf(100))));
-                operation.addParametersItem(new io.swagger.v3.oas.models.parameters.Parameter().name("search").in("query").description("Case-insensitive literal substring across projected fields").schema(new io.swagger.v3.oas.models.media.StringSchema().maxLength(200)));
+                operation.addParametersItem(new Parameter().name("page").in("query").description("Zero-based page number").schema(new IntegerSchema()._default(0).minimum(BigDecimal.ZERO)));
+                operation.addParametersItem(new Parameter().name("size").in("query").description("Items per page, 1–100").schema(new IntegerSchema()._default(20).minimum(BigDecimal.ONE).maximum(BigDecimal.valueOf(100))));
+                operation.addParametersItem(new Parameter().name("search").in("query").description("Case-insensitive literal substring across projected fields").schema(new StringSchema().maxLength(200)));
             }
             return operation;
         };

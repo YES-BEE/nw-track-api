@@ -12,6 +12,8 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
+import com.yesbee.nwtrack.users.ProcessAssignmentService;
+import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -35,8 +37,8 @@ class AuthControllerTest {
                 new NwTrackProperties.Transport("simulator", Duration.ofSeconds(1)));
 
         var access=mock(AccessPolicy.class);
-        when(access.accountIdForUsername("operator1")).thenReturn(java.util.UUID.randomUUID().toString());
-        var response = new AuthController(manager, encoder, properties,access,mock(com.yesbee.nwtrack.users.ProcessAssignmentService.class))
+        when(access.accountIdForUsername("operator1")).thenReturn(UUID.randomUUID().toString());
+        var response = new AuthController(manager, encoder, properties,access,mock(ProcessAssignmentService.class))
                 .login(new AuthController.LoginRequest("operator1", "password","PAD"));
 
         assertThat(response.accessToken()).isEqualTo("signed.jwt");
