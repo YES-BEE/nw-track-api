@@ -38,7 +38,7 @@ public class ProductionController {
     @PutMapping("/lots/{id}") public Map<String,Object> updateLot(@PathVariable UUID id,@Valid @RequestBody LotUpdate r,@AuthenticationPrincipal Jwt jwt){service.updateLotQuantity(id,r.quantity(),r.reason(),actors.id(jwt));return lot(id);}
     @GetMapping("/lots/{id}/timeline") public ApiPage<Map<String,Object>> timeline(@PathVariable UUID id){return Pages.query(jdbc,"select location_type,location_id,actor_id,occurred_at,detail from lot_location_events where lot_id=? order by occurred_at,id",id);}
     @PostMapping("/lots/{id}/cancel") @PreAuthorize("isAuthenticated()") public Map<String,Object> cancel(@PathVariable UUID id,@Valid @RequestBody ReasonCommand r,@AuthenticationPrincipal Jwt jwt){service.cancelLot(id,r.reason(),actors.id(jwt));return lot(id);}
-    @PutMapping("/lots/{id}/trolley") public Map<String,Object> assignTrolley(@PathVariable UUID id,@Valid @RequestBody TrolleyMapping r,@AuthenticationPrincipal Jwt jwt){trolleyMappings.assign(id,r.trolleyId(),actors.id(jwt));return lot(id);}
+    @PutMapping("/lots/{id}/trolley") public Map<String,Object> assignTrolley(@PathVariable UUID id,@Valid @RequestBody TrolleyMapping r,@AuthenticationPrincipal Jwt jwt){trolleyMappings.assign(id,r.trolleyId(),actors.id(jwt),"STYLE_CONFIGURATOR".equals(access.role()));return lot(id);}
     @DeleteMapping("/lots/{id}/trolley") public Map<String,Object> unassignTrolley(@PathVariable UUID id,@AuthenticationPrincipal Jwt jwt){trolleyMappings.unassign(id,actors.id(jwt));return lot(id);}
     public record TrolleyMapping(@NotNull UUID trolleyId){}
     public record LotUpdate(@NotNull @Positive Integer quantity,@NotBlank @Size(max=500) String reason){}

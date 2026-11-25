@@ -36,7 +36,7 @@ public class ModuleAccessService {
             boolean available=method.equals("GET")&&path.equals("/api/v1/trolleys/available");
             if(scan){requireAny("lots","tags");return;}
             if(styles||lots||mapping||available){requireAny("lots");return;}
-            if(path.startsWith("/api/v1/auth/"))return;
+            if(path.startsWith("/api/v1/auth/")||path.equals("/api/v1/notifications"))return;
             throw new AccessDeniedException("This endpoint is outside the Style Configurator PAD workflow");
         }
         if("PC".equals(access.clientType())&&lotManagementPath(path)){

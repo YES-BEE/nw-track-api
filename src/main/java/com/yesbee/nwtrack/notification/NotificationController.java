@@ -15,7 +15,7 @@ import java.util.Map;
 
 @RestController @RequestMapping("/api/v1/notifications") @Tag(name="Notifications")
 public class NotificationController {
-    private final JdbcTemplate jdbc;private final ActorResolver actors;
-    public NotificationController(JdbcTemplate jdbc,ActorResolver actors){this.jdbc=jdbc;this.actors=actors;}
-    @GetMapping public ApiPage<Map<String,Object>> mine(@AuthenticationPrincipal Jwt jwt){return Pages.query(jdbc,"select id,event_type,payload,created_at,delivered_at from notifications where recipient_user_id=? order by created_at desc,id",actors.id(jwt));}
+    private final JdbcTemplate jdbc;private final ActorResolver actors;private final com.fasterxml.jackson.databind.ObjectMapper json;
+    public NotificationController(JdbcTemplate jdbc,ActorResolver actors,com.fasterxml.jackson.databind.ObjectMapper json){this.jdbc=jdbc;this.actors=actors;this.json=json;}
+    @GetMapping public ApiPage<Map<String,Object>> mine(@AuthenticationPrincipal Jwt jwt){return Pages.query(jdbc,"select n.id,n.event_type,"+NotificationService.LIVE_PAYLOAD+" payload,n.created_at,n.delivered_at from notifications n "+NotificationService.LIVE_JOIN+NotificationService.LIVE_COLUMNS+" where n.recipient_user_id=? order by n.created_at desc,n.id",actors.id(jwt)).map(row->{try{row.put("payload",json.readValue(row.get("payload").toString(),new com.fasterxml.jackson.core.type.TypeReference<Map<String,Object>>(){}));return row;}catch(com.fasterxml.jackson.core.JsonProcessingException e){throw new IllegalStateException(e);}});}
 }

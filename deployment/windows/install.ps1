@@ -5,6 +5,7 @@ param(
     [string]$AllowedSubnet,
     [string]$ExternalAllowedIps,
     [switch]$EnableHttps,
+    [ValidateSet('true','false')][string]$TailscaleEnabled,
     [ValidateRange(1,720)][int]$SinceHours = 24,
     [string]$BackupDirectory
 )
@@ -17,6 +18,120 @@ $runtimeDirectory = Join-Path $projectDirectory "deployment\runtime"
 $icsBackupFile = Join-Path $runtimeDirectory "ics-backup.json"
 $dnsBackupFile = Join-Path $runtimeDirectory "dns-backup.json"
 $domain = "nowash-track.com"
+$script:tailscaleExe = $null
+
+function Install-TailscaleFromOfficialMsi {
+    $architecture = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+    $packageArch = switch ($architecture.ToUpperInvariant()) {
+        'AMD64' { 'amd64' }
+        'ARM64' { 'arm64' }
+        'X86' { 'x86' }
+        default { throw "Unsupported Windows processor architecture: $architecture" }
+    }
+    $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-$packageArch.msi"
+    $installer = Join-Path ([IO.Path]::GetTempPath()) ("nwtrack-tailscale-" + [guid]::NewGuid().ToString('N') + '.msi')
+    try {
+        Write-Host 'Downloading the official Tailscale installer...' -ForegroundColor Cyan
+        [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+        try { Invoke-WebRequest -Uri $url -OutFile $installer -UseBasicParsing -ErrorAction Stop }
+        catch { throw "Could not download $url. Check Internet access and retry. Details: $($_.Exception.Message)" }
+        $signature = Get-AuthenticodeSignature -LiteralPath $installer
+        if ($signature.Status -ne 'Valid' -or -not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -notmatch '(^|,\s*)CN="?Tailscale Inc\.?"?(,|$)') {
+            throw "Tailscale installer signature could not be verified (status: $($signature.Status)). Installation was stopped."
+        }
+        Write-Host 'Installing the verified Tailscale package...' -ForegroundColor Cyan
+        $process = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\msiexec.exe') -ArgumentList @('/i', ('"' + $installer + '"'), '/qn', '/norestart') -Wait -PassThru -WindowStyle Hidden
+        if ($process.ExitCode -eq 3010) { throw 'Tailscale installation requires a Windows restart. Restart Windows, then rerun install.cmd start.' }
+        if ($process.ExitCode -ne 0) { throw "Tailscale installer failed with Windows Installer exit code $($process.ExitCode)." }
+    } finally {
+        if (Test-Path -LiteralPath $installer) { Remove-Item -LiteralPath $installer -Force }
+    }
+}
+
+function Initialize-Tailscale {
+    $candidate = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
+    if (-not (Test-Path -LiteralPath $candidate)) {
+        $command = Get-Command tailscale.exe -ErrorAction SilentlyContinue
+        if ($command) { $candidate = $command.Source }
+    }
+    if (-not (Test-Path -LiteralPath $candidate)) {
+        $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
+        if ($winget) {
+            Write-Host 'Installing Tailscale for private mobile access...' -ForegroundColor Cyan
+            try {
+                & $winget.Source install --id Tailscale.Tailscale --exact --silent --accept-package-agreements --accept-source-agreements
+                if ($LASTEXITCODE -ne 0) { Write-Warning 'Windows Package Manager could not install Tailscale. Trying the official signed installer instead.' }
+            } catch { Write-Warning "Windows Package Manager failed: $($_.Exception.Message). Trying the official signed installer instead." }
+        }
+        $candidate = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
+        if (-not (Test-Path -LiteralPath $candidate)) { Install-TailscaleFromOfficialMsi }
+    }
+    if (-not (Test-Path -LiteralPath $candidate)) { throw 'Tailscale was installed but tailscale.exe could not be found. Rerun the installer after Windows finishes setup.' }
+    $script:tailscaleExe = $candidate
+    $service = Get-Service -Name Tailscale -ErrorAction SilentlyContinue
+    if ($service -and $service.Status -ne 'Running') { Start-Service -Name Tailscale }
+    $status = $null
+    try { $status = (& $script:tailscaleExe status --json | Out-String | ConvertFrom-Json) } catch { }
+    if (-not $status -or $status.BackendState -ne 'Running') {
+        Write-Host 'Sign in to Tailscale when prompted. Use the same Tailscale network on your phone.' -ForegroundColor Yellow
+        & $script:tailscaleExe up
+        if ($LASTEXITCODE -ne 0) { throw 'Tailscale sign-in did not complete. Rerun install.cmd start after signing in.' }
+        $status = (& $script:tailscaleExe status --json | Out-String | ConvertFrom-Json)
+    }
+    if ($status.BackendState -ne 'Running' -or -not $status.Self.DNSName) { throw 'Tailscale is not connected or has no DNS name. Complete sign-in and rerun install.cmd start.' }
+    $name = $status.Self.DNSName.TrimEnd('.')
+    if ($name -notmatch '^[a-zA-Z0-9.-]+$') { throw 'Tailscale returned an invalid DNS name.' }
+    Set-EnvironmentValue 'TAILSCALE_ORIGIN' "https://${name}:18443"
+}
+
+function Enable-TailscaleGateway {
+    $serveJson = & $script:tailscaleExe serve status --json
+    if ($LASTEXITCODE -ne 0) { throw 'Could not read Tailscale Serve configuration.' }
+    $serve = ($serveJson | Out-String | ConvertFrom-Json)
+    if ($serve -and $serve.Foreground) {
+        foreach ($session in $serve.Foreground.PSObject.Properties) {
+            if ($session.Value.TCP -and $session.Value.TCP.PSObject.Properties['18443']) { throw 'Tailscale port 18443 is in use by a foreground session; its configuration was preserved.' }
+        }
+    }
+    $port = if ($serve -and $serve.TCP) { $serve.TCP.PSObject.Properties['18443'] } else { $null }
+    if ($port) {
+        $origin = Get-EnvironmentValue 'TAILSCALE_ORIGIN'
+        $hostPort = ($origin -replace '^https://','')
+        $funnel = if ($serve.AllowFunnel) { $serve.AllowFunnel.PSObject.Properties[$hostPort] } else { $null }
+        if ($funnel -and $funnel.Value) { throw 'Tailscale port 18443 is configured for public Funnel access; its configuration was preserved.' }
+        $web = if ($serve.Web) { $serve.Web.PSObject.Properties[$hostPort] } else { $null }
+        $handler = if ($web -and $web.Value.Handlers) { $web.Value.Handlers.PSObject.Properties['/'] } else { $null }
+        if (-not $handler -or $handler.Value.Proxy -notmatch '^http://127\.0\.0\.1:18080/?$') {
+            throw 'Tailscale port 18443 is already in use by another Serve configuration. Preserve it and select another port before enabling NW Track.'
+        }
+    }
+    Write-Host 'Configuring the private Tailscale HTTPS gateway. Complete any browser prompt to enable HTTPS for your tailnet.' -ForegroundColor Cyan
+    & $script:tailscaleExe serve --bg --https=18443 http://127.0.0.1:18080
+    if ($LASTEXITCODE -ne 0) { throw 'Tailscale Serve configuration failed. Complete any displayed HTTPS setup and rerun install.cmd start.' }
+    Write-Host "Private mobile URL: $(Get-EnvironmentValue 'TAILSCALE_ORIGIN')/swagger-ui/index.html" -ForegroundColor Green
+}
+
+function Disable-TailscaleGateway {
+    $origin = Get-EnvironmentValue 'TAILSCALE_ORIGIN'
+    $candidate = Join-Path $env:ProgramFiles 'Tailscale\tailscale.exe'
+    if (-not $origin -or -not (Test-Path -LiteralPath $candidate)) { return }
+    $serveJson = & $candidate serve status --json
+    if ($LASTEXITCODE -ne 0) { throw 'Could not inspect Tailscale Serve; private access has not been removed.' }
+    $serve = ($serveJson | Out-String | ConvertFrom-Json)
+    $hostPort = ($origin -replace '^https://','')
+    $funnel = if ($serve -and $serve.AllowFunnel) { $serve.AllowFunnel.PSObject.Properties[$hostPort] } else { $null }
+    if ($funnel -and $funnel.Value) { throw 'Tailscale port 18443 is configured for public Funnel access; its configuration was preserved.' }
+    $web = if ($serve -and $serve.Web) { $serve.Web.PSObject.Properties[$hostPort] } else { $null }
+    $handler = if ($web -and $web.Value.Handlers) { $web.Value.Handlers.PSObject.Properties['/'] } else { $null }
+    if ($handler -and $handler.Value.Proxy -match '^http://127\.0\.0\.1:18080/?$') {
+        & $candidate serve --https=18443 off
+        if ($LASTEXITCODE -ne 0) { throw 'Could not remove the NW Track Tailscale gateway.' }
+        Write-Host 'Removed the NW Track Tailscale gateway.' -ForegroundColor Green
+    } elseif ($serve -and $serve.TCP -and $serve.TCP.PSObject.Properties['18443']) {
+        Write-Warning 'Tailscale port 18443 no longer matches the NW Track gateway; its existing configuration was preserved.'
+    }
+    Set-EnvironmentValue 'TAILSCALE_ORIGIN' ''
+}
 
 function Test-Administrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -30,6 +145,7 @@ function Invoke-Elevated {
     if ($AllowedSubnet) { $arguments += @("-AllowedSubnet", $AllowedSubnet) }
     if ($externalIpsSpecified) { $arguments += @('-ExternalAllowedIps', ('"' + $ExternalAllowedIps + '"')) }
     if ($EnableHttps) { $arguments += "-EnableHttps" }
+    if ($TailscaleEnabled) { $arguments += @('-TailscaleEnabled', $TailscaleEnabled) }
     $process = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -ArgumentList ($arguments -join ' ')
     exit $process.ExitCode
 }
@@ -205,7 +321,7 @@ function Configure-Network {
     Write-Host "Application URL: https://$domain" -ForegroundColor Cyan
     Write-Host "Configure the Wi-Fi router DHCP DNS address as: $ip" -ForegroundColor Yellow
     } else { Write-Host "Application URL: http://$ip" -ForegroundColor Cyan }
-    Write-Host "External access requires VPN or router forwarding; this installer does not configure it." -ForegroundColor Yellow
+    Write-Host "Run install.cmd start to set up private Tailscale access." -ForegroundColor Yellow
 }
 
 function Install-FactoryCa {
@@ -300,6 +416,10 @@ switch ($Action) {
     "configure" { Configure-Network }
     "start" {
         Configure-Network
+        if ($TailscaleEnabled) { Set-EnvironmentValue 'TAILSCALE_ENABLED' $TailscaleEnabled }
+        if (-not (Get-EnvironmentValue 'TAILSCALE_ENABLED')) { Set-EnvironmentValue 'TAILSCALE_ENABLED' 'false' }
+        $vpnEnabled = (Get-EnvironmentValue 'TAILSCALE_ENABLED') -eq 'true'
+        if ($vpnEnabled) { Initialize-Tailscale } else { Disable-TailscaleGateway }
         & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot "nwtrack.ps1") start
         if ($LASTEXITCODE -ne 0) { throw "NW Track startup failed with exit code $LASTEXITCODE." }
         if ($EnableHttps) { Enable-LocalDns; Install-FactoryCa }
@@ -308,6 +428,7 @@ switch ($Action) {
             if ((Get-EnvironmentValue "ICS_DISABLED_BY_NWTRACK") -eq "true") { Restore-InternetConnectionSharing; Set-EnvironmentValue "ICS_DISABLED_BY_NWTRACK" "false" }
         }
         Test-Deployment
+        if ($vpnEnabled) { Enable-TailscaleGateway }
         Enable-LogArchiving
     }
     "support" {
@@ -325,6 +446,7 @@ switch ($Action) {
     "status" { Show-Status }
     "test" { Test-Deployment }
     "remove" {
+        Disable-TailscaleGateway
         Restore-ClientDns
         Get-NetFirewallRule -DisplayName "NW Track - *" -ErrorAction SilentlyContinue | Remove-NetFirewallRule
         Set-EnvironmentValue "BIND_ADDRESS" "127.0.0.1"
