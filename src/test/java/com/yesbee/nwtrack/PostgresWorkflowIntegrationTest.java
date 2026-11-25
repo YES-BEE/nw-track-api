@@ -584,7 +584,7 @@ class PostgresWorkflowIntegrationTest {
         String pad=login(owner,"PAD"),otherPad=login(other,"PAD"),uid="PAD-"+suffix;
         jdbc.update("insert into nfc_tags(id,uid,name,asset_type,trolley_id,active) values (?,?,?,'TROLLEY',?::uuid,true)",UUID.randomUUID(),uid.toUpperCase(),uid,trolleyId);
         assertThat(call("GET","/api/v1/styles",null,pad).body().get("totalElements").asInt()).isEqualTo(1);
-        assertThat(call("GET",styleLots,null,pad).body().get("totalElements").asInt()).isEqualTo(5);
+        assertThat(call("GET",styleLots,null,pad).body().get("totalElements").asInt()).isEqualTo(4);
         assertThat(call("GET",styleLots,null,otherPad).status()).isEqualTo(403);
         assertThat(call("POST","/api/v1/nfc/resolve",java.util.Map.of("uid",uid),pad).status()).isEqualTo(200);
         assertThat(call("PUT",lotPath+"/trolley",java.util.Map.of("trolleyId",trolleyId),otherPad).status()).isEqualTo(403);
@@ -601,7 +601,7 @@ class PostgresWorkflowIntegrationTest {
         assertThat(jdbc.queryForObject("select count(*) from outbox_events where aggregate_id=?::uuid and event_type='LOT_UPDATED'",Integer.class,padLot)).isGreaterThan(0);
         assertThat(call("POST",lotPath+"/trolley-link",java.util.Map.of("trolleyId",trolleyId),otherPad).status()).isEqualTo(403);
         assertThat(call("POST",lotPath+"/dispatch",null,pad).status()).isEqualTo(403);
-        String pcLot=initial.body().get("items").get(2).get("id").asText();
+        String pcLot=additional.body().get("items").get(1).get("id").asText();
         String pcTrolley=call("POST","/api/v1/trolleys",java.util.Map.of("code","PC-T-"+suffix),admin).body().get("id").asText();
         assertThat(call("PUT","/api/v1/lots/"+pcLot+"/trolley",java.util.Map.of("trolleyId",pcTrolley),creator).status()).isEqualTo(200);
         assertThat(jdbc.queryForObject("select status from lots where id=?::uuid",String.class,pcLot)).isEqualTo("DISPATCHED");
@@ -1119,6 +1119,19 @@ class PostgresWorkflowIntegrationTest {
         assertThat(legacy.queryForObject("select r.code from roles r join user_roles ur on ur.role_id=r.id where ur.user_id=?",String.class,operator)).isEqualTo("PROCESS_MANAGER");
         assertThat(legacy.queryForObject("select enabled from users where id=?",Boolean.class,display)).isFalse();
         assertThat(legacy.queryForObject("select r.code from roles r join user_roles ur on ur.role_id=r.id where ur.user_id=?",String.class,multi)).isEqualTo("ADMIN_IT");
+    }
+
+    @Test void preservesStationConfiguratorMigrationHistoryWhenAddingReports(){
+        String schema="station_upgrade_"+UUID.randomUUID().toString().replace("-","");
+        var source=new org.springframework.jdbc.datasource.DriverManagerDataSource(postgres.getJdbcUrl(),postgres.getUsername(),postgres.getPassword());
+        org.flywaydb.core.Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).target("14").load().migrate();
+        var upgraded=new JdbcTemplate(new org.springframework.jdbc.datasource.DriverManagerDataSource(postgres.getJdbcUrl()+"&currentSchema="+schema,postgres.getUsername(),postgres.getPassword()));
+        assertThat(upgraded.queryForObject("select checksum from flyway_schema_history where version='12'",Integer.class)).isEqualTo(240268509);
+        assertThat(upgraded.queryForObject("select checksum from flyway_schema_history where version='13'",Integer.class)).isEqualTo(2028265281);
+        org.flywaydb.core.Flyway.configure().dataSource(source).schemas(schema).defaultSchema(schema).load().migrate();
+        assertThat(upgraded.queryForObject("select count(*) from report_categories",Integer.class)).isEqualTo(8);
+        assertThat(upgraded.queryForObject("select count(*) from role_modules rm join roles r on r.id=rm.role_id where r.code='STYLE_CONFIGURATOR' and rm.module_key in ('tags','trolleys')",Integer.class)).isEqualTo(2);
+        assertThat(upgraded.queryForObject("select count(*) from flyway_schema_history where version in ('15','16') and success",Integer.class)).isEqualTo(2);
     }
 
     @Test void migrationsBootstrapAdminAndCreateFrozenLotRoute()throws Exception{

@@ -36,7 +36,8 @@ public class ModuleAccessService {
             boolean available=method.equals("GET")&&path.equals("/api/v1/trolleys/available");
             if(scan){requireAny("lots","tags");return;}
             if(styles||lots||mapping||available){requireAny("lots");return;}
-            if(path.startsWith("/api/v1/auth/")||path.equals("/api/v1/notifications"))return;
+            if(Set.of("/api/v1/auth/me","/api/v1/auth/change-password","/api/v1/auth/logout","/api/v1/auth/refresh-tokens","/api/v1/auth/sessions","/api/v1/notifications").contains(path)
+                ||path.matches("/api/v1/auth/sessions/[^/]+"))return;
             throw new AccessDeniedException("This endpoint is outside the Style Configurator PAD workflow");
         }
         if("PC".equals(access.clientType())&&lotManagementPath(path)){
