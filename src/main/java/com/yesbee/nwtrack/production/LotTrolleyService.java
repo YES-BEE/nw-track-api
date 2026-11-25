@@ -18,10 +18,12 @@ public class LotTrolleyService {
             throw new BusinessRuleException("TROLLEY_MAPPING_NOT_ALLOWED","Trolley mapping requires a ready Lot or a Lot waiting at a Station");
         return row;
     }
-    @Transactional public void assign(UUID lot,UUID trolley,UUID actor){
+    @Transactional public void assign(UUID lot,UUID trolley,UUID actor){ assign(lot,trolley,actor,false); }
+    @Transactional public void assign(UUID lot,UUID trolley,UUID actor,boolean dispatchReady){
         var before=editable(lot);
         operations.linkTrolley(lot,trolley,actor);
         jdbc.update("update lot_trolley_assignments set previous_location_type=?,previous_location_id=? where lot_id=? and released_at is null",before.get("current_location_type"),before.get("current_location_id"),lot);
+        if (dispatchReady && "READY".equals(before.get("status"))) operations.dispatch(lot,actor);
     }
     @Transactional public void unassign(UUID lot,UUID actor){
         var before=editable(lot);

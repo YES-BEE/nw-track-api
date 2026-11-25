@@ -3,7 +3,7 @@ package com.yesbee.nwtrack.workflow;
 import java.util.List;
 import java.util.stream.Collectors;
 
-final class LotProgressSql {
+public final class LotProgressSql {
     private LotProgressSql() {}
 
     private record Column(String databaseName, String apiName) {}
@@ -36,14 +36,14 @@ final class LotProgressSql {
             new Column("next_step_station_name", "nextStepStationName")
     );
 
-    static String columns(boolean camelCase) {
+    public static String columns(boolean camelCase) {
         return COLUMNS.stream()
                 .map(column -> "route_progress." + column.databaseName()
                         + (camelCase ? " as \"" + column.apiName() + "\"" : " as " + column.databaseName()))
                 .collect(Collectors.joining(","));
     }
 
-    static final String JOIN = """
+    public static final String JOIN = """
         left join lateral (
          select
           case when l.status='COMPLETED' then 100.00

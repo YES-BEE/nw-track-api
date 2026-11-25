@@ -142,6 +142,11 @@ function Set-DeploymentMode {
         $env:COMPOSE_PROFILES = ""
         $env:ALLOWED_ORIGINS = "http://$($settings.BIND_ADDRESS)"
     }
+    if ($settings.TAILSCALE_ENABLED -eq 'true' -and $settings.TAILSCALE_ORIGIN) {
+        $env:COMPOSE_PROFILES = if ($env:COMPOSE_PROFILES) { $env:COMPOSE_PROFILES + ',vpn' } else { 'vpn' }
+        $env:ALLOWED_ORIGINS += "," + $settings.TAILSCALE_ORIGIN
+        if ($settings.CORS_ALLOWED_ORIGINS) { $env:CORS_ALLOWED_ORIGINS = $settings.CORS_ALLOWED_ORIGINS + "," + $settings.TAILSCALE_ORIGIN }
+    }
 }
 
 function Ensure-Certificates {

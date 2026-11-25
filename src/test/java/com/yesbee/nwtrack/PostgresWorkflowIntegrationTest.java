@@ -581,31 +581,46 @@ class PostgresWorkflowIntegrationTest {
         // Lot Management allows choosing and releasing a trolley without general configuration access.
         Reply trolley=call("POST","/api/v1/trolleys",Map.of("code","LM-T-"+suffix),admin);
         String trolleyId=trolley.body().get("id").asText();
-        String creatorPad=login(owner,"PAD"),outsiderPad=login(other,"PAD");
-        assertThat(call("GET","/api/v1/styles",null,creatorPad).body().get("totalElements").asInt()).isEqualTo(1);
-        assertThat(call("GET",styleLots,null,creatorPad).body().get("totalElements").asInt()).isEqualTo(4);
-        assertThat(call("GET","/api/v1/trolleys/available",null,creatorPad).status()).isEqualTo(200);
-        assertThat(call("GET","/api/v1/trolleys",null,creatorPad).status()).isEqualTo(200);
-        assertThat(call("PUT",lotPath+"/trolley",Map.of("trolleyId",trolleyId),outsiderPad).status()).isEqualTo(403);
-        String uid=("PAD-"+suffix).toUpperCase();
-        jdbc.update("insert into nfc_tags(id,uid,name,asset_type,trolley_id,active) values (?,?,?,'TROLLEY',?::uuid,true)",UUID.randomUUID(),uid,uid,trolleyId);
-        assertThat(call("POST","/api/v1/nfc/resolve",Map.of("uid",uid),creatorPad).status()).isEqualTo(200);
-        assertThat(call("POST",lotPath+"/trolley-link",Map.of("trolleyId",trolleyId),outsiderPad).status()).isEqualTo(403);
-        assertThat(call("POST",lotPath+"/trolley-link",Map.of("trolleyId",trolleyId),creatorPad).status()).isEqualTo(200);
-        assertThat(call("DELETE",lotPath+"/trolley",null,creatorPad).status()).isEqualTo(200);
-        Reply mapped=call("PUT",lotPath+"/trolley",Map.of("trolleyId",trolleyId),creatorPad);
+        String pad=login(owner,"PAD"),otherPad=login(other,"PAD"),uid="PAD-"+suffix;
+        jdbc.update("insert into nfc_tags(id,uid,name,asset_type,trolley_id,active) values (?,?,?,'TROLLEY',?::uuid,true)",UUID.randomUUID(),uid.toUpperCase(),uid,trolleyId);
+        assertThat(call("GET","/api/v1/styles",null,pad).body().get("totalElements").asInt()).isEqualTo(1);
+        assertThat(call("GET",styleLots,null,pad).body().get("totalElements").asInt()).isEqualTo(5);
+        assertThat(call("GET",styleLots,null,otherPad).status()).isEqualTo(403);
+        assertThat(call("POST","/api/v1/nfc/resolve",java.util.Map.of("uid",uid),pad).status()).isEqualTo(200);
+        assertThat(call("PUT",lotPath+"/trolley",java.util.Map.of("trolleyId",trolleyId),otherPad).status()).isEqualTo(403);
+        String padLot=initial.body().get("items").get(1).get("id").asText();
+        String padTrolley=call("POST","/api/v1/trolleys",java.util.Map.of("code","PAD-T-"+suffix),admin).body().get("id").asText();
+        assertThat(call("PUT","/api/v1/lots/"+padLot+"/trolley",java.util.Map.of("trolleyId",padTrolley),pad).status()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("select status from lots where id=?::uuid",String.class,padLot)).isEqualTo("DISPATCHED");
+        assertThat(jdbc.queryForObject("select count(*) from outbox_events where aggregate_id=?::uuid and event_type='INCOMING_LOT'",Integer.class,padLot)).isEqualTo(1);
+        jdbc.update("insert into notifications(id,recipient_user_id,event_type,payload) select ?,id,'INCOMING_LOT',jsonb_build_object('lotId',?,'lotStatus','OLD') from users where username=?",UUID.randomUUID(),padLot,owner);
+        Reply live=call("GET","/api/v1/notifications",null,pad);
+        assertThat(live.status()).isEqualTo(200);
+        assertThat(live.body().get("items").get(0).get("payload").get("lotStatus").asText()).isEqualTo("DISPATCHED");
+        jdbc.update("update lots set version=version+1 where id=?::uuid",padLot);
+        assertThat(jdbc.queryForObject("select count(*) from outbox_events where aggregate_id=?::uuid and event_type='LOT_UPDATED'",Integer.class,padLot)).isGreaterThan(0);
+        assertThat(call("POST",lotPath+"/trolley-link",java.util.Map.of("trolleyId",trolleyId),otherPad).status()).isEqualTo(403);
+        assertThat(call("POST",lotPath+"/dispatch",null,pad).status()).isEqualTo(403);
+        String pcLot=initial.body().get("items").get(2).get("id").asText();
+        String pcTrolley=call("POST","/api/v1/trolleys",java.util.Map.of("code","PC-T-"+suffix),admin).body().get("id").asText();
+        assertThat(call("PUT","/api/v1/lots/"+pcLot+"/trolley",java.util.Map.of("trolleyId",pcTrolley),creator).status()).isEqualTo(200);
+        assertThat(jdbc.queryForObject("select status from lots where id=?::uuid",String.class,pcLot)).isEqualTo("DISPATCHED");
+        assertThat(call("GET","/api/v1/trolleys/available",null,creator).status()).isEqualTo(200);
+        assertThat(call("GET","/api/v1/trolleys",null,creator).status()).isEqualTo(200);
+        assertThat(call("PUT",lotPath+"/trolley",java.util.Map.of("trolleyId",trolleyId),outsider).status()).isEqualTo(403);
+        Reply mapped=call("PUT",lotPath+"/trolley",java.util.Map.of("trolleyId",trolleyId),admin);
         assertThat(mapped.status()).as(mapped.body().toString()).isEqualTo(200);
         assertThat(mapped.body().get("trolley_id").asText()).isEqualTo(trolleyId);
         String second=additional.body().get("items").get(0).get("id").asText();
         assertThat(call("PUT","/api/v1/lots/"+second+"/trolley",Map.of("trolleyId",trolleyId),creator).status()).isEqualTo(409);
         assertThat(call("DELETE",lotPath+"/trolley",null,outsider).status()).isEqualTo(403);
-        assertThat(call("DELETE",lotPath+"/trolley",null,creator).body().get("trolley_id").isNull()).isTrue();
+        assertThat(call("DELETE",lotPath+"/trolley",null,admin).body().get("trolley_id").isNull()).isTrue();
         assertThat(jdbc.queryForObject("select status from trolleys where id=?::uuid",String.class,trolleyId)).isEqualTo("AVAILABLE");
-        assertThat(call("DELETE",lotPath+"/trolley",null,creatorPad).status()).isEqualTo(200);
+        assertThat(call("DELETE",lotPath+"/trolley",null,admin).status()).isEqualTo(200);
         jdbc.update("update trolleys set active=false where id=?::uuid",trolleyId);
-        assertThat(call("PUT",lotPath+"/trolley",Map.of("trolleyId",trolleyId),creator).status()).isEqualTo(409);
+        assertThat(call("PUT",lotPath+"/trolley",java.util.Map.of("trolleyId",trolleyId),admin).status()).isEqualTo(409);
         jdbc.update("update trolleys set active=true where id=?::uuid",trolleyId);
-        assertThat(call("PUT",lotPath+"/trolley",Map.of("trolleyId",trolleyId),creator).status()).isEqualTo(200);
+        assertThat(call("PUT",lotPath+"/trolley",java.util.Map.of("trolleyId",trolleyId),admin).status()).isEqualTo(200);
         jdbc.update("update lots set status='DISPATCHED' where id=?::uuid",lotId);
         assertThat(call("DELETE",lotPath+"/trolley",null,creator).status()).isEqualTo(409);
         assertThat(call("POST",lotPath+"/dispatch",null,creator).status()).isEqualTo(403);
@@ -1106,7 +1121,7 @@ class PostgresWorkflowIntegrationTest {
         assertThat(legacy.queryForObject("select r.code from roles r join user_roles ur on ur.role_id=r.id where ur.user_id=?",String.class,multi)).isEqualTo("ADMIN_IT");
     }
 
-    @Test void migrationsBootstrapAdminAndCreateFrozenLotRoute(){
+    @Test void migrationsBootstrapAdminAndCreateFrozenLotRoute()throws Exception{
         assertThat(jdbc.queryForObject("select count(*) from flyway_schema_history where success",Integer.class)).isGreaterThanOrEqualTo(2);
         UUID actor=jdbc.queryForObject("select id from users where username='admin'",UUID.class);
         UUID station=UUID.randomUUID(),qcStation=UUID.randomUUID(),p1=UUID.randomUUID(),p2=UUID.randomUUID();
@@ -1126,6 +1141,10 @@ class PostgresWorkflowIntegrationTest {
         jdbc.update("insert into trolleys(id,code) values (?,'T-IT')",trolley);
         operations.linkTrolley(lot,trolley,actor);
         var firstDispatch=operations.dispatch(lot,actor);
+        String otherUser="notification-reader-"+UUID.randomUUID(); UUID otherId=UUID.randomUUID();
+        jdbc.update("insert into users(id,username,display_name,password_hash) select ?,?,'Notification reader',password_hash from users where id=?",otherId,otherUser,actor);
+        jdbc.update("insert into user_roles(user_id,role_id) select ?,role_id from user_roles where user_id=?",otherId,actor);
+        for(UUID recipient:List.of(actor,otherId)) jdbc.update("insert into notifications(id,recipient_user_id,event_type,payload) values (?,?,'INCOMING_LOT',?::jsonb)",UUID.randomUUID(),recipient,json.writeValueAsString(firstDispatch));
         assertThat(((Number)firstDispatch.get("progressPercent")).doubleValue()).isEqualTo(0.0);
         assertThat(firstDispatch.get("completedRouteSteps")).isEqualTo(0L);
         assertThat(firstDispatch.get("totalRouteSteps")).isEqualTo(2L);
@@ -1150,12 +1169,27 @@ class PostgresWorkflowIntegrationTest {
         machines.transition(firstExecution,"complete",null,null,List.of("MACHINE-P1-IT"),actor);
         assertThat(jdbc.queryForObject("select status from machines where id=?",String.class,firstMachine)).isEqualTo("AVAILABLE");
         operations.linkTrolley(lot,trolley,actor);
+        assertThat(jdbc.queryForObject("select status from lots where id=?",String.class,lot)).isEqualTo("READY_FOR_DISPATCH");
         var secondDispatch=operations.dispatch(lot,actor);
         assertThat(((Number)secondDispatch.get("progressPercent")).doubleValue()).isEqualTo(50.0);
         assertThat(secondDispatch.get("completedRouteSteps")).isEqualTo(1L);
         assertThat(secondDispatch.get("currentProcessId")).isEqualTo(p2);
         assertThat(secondDispatch.get("currentStepSequence")).isEqualTo(2);
         assertThat(secondDispatch.get("nextStepId")).isNull();
+        for(String token:List.of(login("admin","PC"),login(otherUser,"PC"))){
+            var page=call("GET","/api/v1/notifications?search="+lot,null,token);
+            assertThat(page.status()).as(page.body().toString()).isEqualTo(200);
+            var payload=page.body().get("items").get(0).get("payload");
+            assertThat(payload.get("destinationStationId").asText()).isEqualTo(qcStation.toString());
+            assertThat(payload.get("destinationStation").asText()).isEqualTo("QC");
+            assertThat(payload.get("currentProcessId").asText()).isEqualTo(p2.toString());
+            assertThat(payload.get("currentStepSequence").asInt()).isEqualTo(2);
+        }
+        var message=org.mockito.Mockito.mock(org.springframework.messaging.simp.SimpMessagingTemplate.class);
+        new com.yesbee.nwtrack.notification.NotificationService(jdbc,json,message).lotUpdated(lot);
+        var sent=org.mockito.ArgumentCaptor.forClass(Object.class);
+        org.mockito.Mockito.verify(message,org.mockito.Mockito.times(2)).convertAndSendToUser(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.eq("/queue/events"),sent.capture());
+        for(Object body:sent.getAllValues()){java.util.Map<?,?> payload=(java.util.Map<?,?>)body;assertThat(payload.get("destinationStationId")).isEqualTo(qcStation.toString());assertThat(payload.get("destinationStation")).isEqualTo("QC");}
         UUID qcVisit=jdbc.queryForObject("select sv.id from station_visits sv join lot_route_entries lr on lr.id=sv.lot_route_entry_id where sv.lot_id=? and lr.sequence_no=2",UUID.class,lot);
         UUID qcExecution=jdbc.queryForObject("select id from process_executions where station_visit_id=?",UUID.class,qcVisit);
         nfc.registerAndAssign("PROC-P2-IT","PROCESS",p2,actor,"integration test");
