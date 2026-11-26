@@ -406,36 +406,53 @@ class PostgresWorkflowIntegrationTest {
         jdbc.update("insert into processes(id,code,name,station_id) values (?,?,'Trend process',?)",process,"TREND-P-"+suffix,station);
         UUID style=production.createConfiguredStyle("TREND-"+suffix,null,actor,List.of(process));production.release(style);
         var ids=production.createLots(style,4,null,actor);
-        var now=jdbc.queryForObject("select now()",OffsetDateTime.class);
-        var start=now.atZoneSameInstant(ZoneId.of("Asia/Kolkata")).toLocalDate().atStartOfDay(ZoneId.of("Asia/Kolkata")).toOffsetDateTime();
-        // Three lots entered yesterday; one stays open, one completes and one cancels today.
-        for(UUID lot:ids.subList(0,3))jdbc.update("update station_visits set dispatched_at=? where lot_id=?",start.minusHours(1),lot);
-        jdbc.update("update lots set status='IN_PROCESS' where id=?",ids.get(0));
-        var terminal=start.plusHours(1).plusSeconds(1).isBefore(now)?start.plusHours(1).plusSeconds(1):start.plusSeconds(1);
-        jdbc.update("update lots set status='COMPLETED',completed_at=? where id=?",terminal,ids.get(1));
-        jdbc.update("update lots set status='CANCELLED',cancelled_at=? where id=?",terminal,ids.get(2));
-        String name="trend-reader-"+suffix;
-        assertThat(call("POST","/api/v1/users",Map.of("username",name,"displayName",name,"initialPassword","ChangeMe123!","role","SUPERVISOR","processAssignments",List.of(Map.of("processId",process,"activeOnShift",true))),admin).status()).isEqualTo(200);
-        String token=login(name,"PC");
-        var response=call("GET","/api/v1/dashboard?size=1&search=nonexistent",null,token);
-        assertThat(response.status()).as(response.body().toString()).isEqualTo(200);
-        var trend=response.body().get("productionTrend");
-        assertThat(trend.get("timezone").asText()).isEqualTo("Asia/Kolkata");
-        assertThat(trend.get("date").asText()).isEqualTo(start.toLocalDate().toString());
-        var points=trend.get("points");assertThat(points.size()).isBetween(1,24);
-        int totalCompleted=0;
-        for(var point:points){
-            totalCompleted+=point.get("completed").asInt();
-            var end=OffsetDateTime.parse(point.get("bucket_end").asText());
-            assertThat(point.get("in_progress").asInt()).isEqualTo(end.isBefore(terminal)?3:1);
+        var role=call("POST","/api/v1/access-roles",Map.of("name","Trend reader "+suffix,"modules",List.of("dashboard")),admin);
+        assertThat(role.status()).as(role.body().toString()).isEqualTo(200);
+        String code=role.body().get("code").asText(),name="trend-reader-"+suffix;
+        var user=call("POST","/api/v1/users",Map.of("username",name,"displayName",name,"initialPassword","ChangeMe123!","role",code,"processAssignments",List.of(Map.of("processId",process,"activeOnShift",true))),admin);
+        assertThat(user.status()).as(user.body().toString()).isEqualTo(200);
+        try {
+            String token=login(name,"PC");
+            var now=jdbc.queryForObject("select now()",OffsetDateTime.class);
+            var zone=ZoneId.of("Asia/Kolkata");
+            var start=now.atZoneSameInstant(zone).toLocalDate().atStartOfDay(zone).toOffsetDateTime();
+            var secondHour=start.plusHours(1).plusSeconds(1);
+            var terminal=secondHour.isBefore(now)?secondHour:start;
+            // Three lots entered yesterday; one stays open, one completes and one cancels today.
+            for(UUID lot:ids.subList(0,3))jdbc.update("update station_visits set dispatched_at=? where lot_id=?",start.minusHours(1),lot);
+            jdbc.update("update lots set status='IN_PROCESS' where id=?",ids.get(0));
+            jdbc.update("update lots set status='COMPLETED',completed_at=? where id=?",terminal,ids.get(1));
+            jdbc.update("update lots set status='CANCELLED',cancelled_at=? where id=?",terminal,ids.get(2));
+
+            var response=call("GET","/api/v1/dashboard?size=1&search=nonexistent",null,token);
+            assertThat(response.status()).as(response.body().toString()).isEqualTo(200);
+            var trend=response.body().get("productionTrend");
+            assertThat(trend.get("timezone").asText()).isEqualTo(zone.getId());
+            assertThat(trend.get("date").asText()).isEqualTo(start.toLocalDate().toString());
+            var points=trend.get("points");assertThat(points.size()).isBetween(1,24);
+            int totalCompleted=0;
+            for(var point:points){
+                totalCompleted+=point.get("completed").asInt();
+                var end=OffsetDateTime.parse(point.get("bucket_end").asText());
+                assertThat(point.get("in_progress").asInt()).as("work in progress at %s",end).isEqualTo(end.isBefore(terminal)?3:1);
+            }
+            assertThat(totalCompleted).isEqualTo(1);
+            int completedHour=(int)Duration.between(start,terminal).toHours();
+            assertThat(points.get(completedHour).get("completed").asInt()).isEqualTo(1);
+            assertThat(OffsetDateTime.parse(points.get(0).get("bucket_start").asText()).toInstant()).isEqualTo(start.toInstant());
+
+            var display=call("GET","/api/v1/displays/factory-summary",null,token);
+            assertThat(display.status()).as(display.body().toString()).isEqualTo(200);
+            var displayTrend=display.body().get("productionTrend");
+            assertThat(displayTrend.get("date")).isEqualTo(trend.get("date"));
+            var displayPoint=displayTrend.get("points").get(completedHour);
+            assertThat(displayPoint.get("bucket_start")).isEqualTo(points.get(completedHour).get("bucket_start"));
+            assertThat(displayPoint.get("completed").asInt()).isEqualTo(1);
+        } finally {
+            String userId=user.body().get("id").asText();
+            assertThat(call("PUT","/api/v1/users/"+userId+"/roles",Map.of("role","PROCESS_MANAGER"),admin).status()).isEqualTo(200);
+            assertThat(call("DELETE","/api/v1/access-roles/"+code,null,admin).status()).isEqualTo(200);
         }
-        assertThat(totalCompleted).isGreaterThanOrEqualTo(1);
-        int completedHour=(int)Duration.between(start,terminal).toHours();
-        assertThat(points.get(completedHour).get("completed").asInt()).isGreaterThanOrEqualTo(1);
-        assertThat(OffsetDateTime.parse(points.get(0).get("bucket_start").asText()).toInstant()).isEqualTo(start.toInstant());
-        var display=call("GET","/api/v1/displays/factory-summary",null,token).body().get("productionTrend");
-        assertThat(display.get("points").size()).isEqualTo(points.size());
-        assertThat(display.get("points").get(completedHour).get("completed").asInt()).isEqualTo(1);
     }
 
     @Test void userStatusIsManagedThroughCreateAndUpdateOnly()throws Exception{
